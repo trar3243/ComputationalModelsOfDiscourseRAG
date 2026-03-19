@@ -8,7 +8,7 @@ import chromadb
 client = chromadb.CloudClient(
   api_key='INSERT API KEY HERE',
   tenant='d518a61e-e4ea-403e-830c-a8e2833e1b16',
-  database='CoRefRAG'
+  database='CoRefRAG_Collection'
 )
 
 # 2 - CONNECT TO COLLECTION
