@@ -1,11 +1,14 @@
 import sys, os
+import torch
+
 
 CMDDROOT = os.environ['CMDDROOT'] # Expected to be a global environment variable. If not set, navigate to root of repository, call "source ./.env"
 sys.path.append(CMDDROOT)
 
 from ClassDefinition.Utils import Logger, ArgumentParser # type: ignore
+from Main.segmenter import segment
 
-required_arguments = ["testArg1"]
+required_arguments = []
 optional_arguments = {
     "dataPath": f"{CMDDROOT}/Data/"
 }
@@ -16,7 +19,7 @@ print = g_Logger.print
 USAGE = """
 main.py
     Required:
-        testArg1=<testArg1>
+        
     Optional:
         dataPath=<dataPath>
 """
@@ -29,10 +32,15 @@ def initialize(inputArguments):
     except Exception as e:
         e.add_note(USAGE) # add usage note 
         raise
+    g_ArgParse.set("device", "cuda" if torch.cuda.is_available() else "cpu")
     g_ArgParse.printArguments()
+
+
 
 def main(inputArguments):
     initialize(inputArguments)
+    
+    segment(data_path=f"{g_ArgParse.get('dataPath')}/wikisection_en_disease_test.json", device=g_ArgParse.get("device"))
 
 
 
