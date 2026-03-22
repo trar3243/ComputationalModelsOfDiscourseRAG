@@ -15,16 +15,38 @@ client = chromadb.CloudClient(
 # We can have multiple text collections under the database
 collection = client.get_collection("CoRefRAG_Collection")
 
-# 3 - Add chunked text entries to the Data
-# This uses the free default all-MiniLM-L6-v2 embedding function
-collection.add( documents=[
-        "The NCAA Division I men's basketball tournament, branded as March Madness",
-        "Played mostly during March, the tournament was first conducted in 1939 and currently consists of 68 teams."
-    ],
-    #ADD A CORRESPONDING ID TO EACH ENTRY
-    #To Do - I'll make a function to do this en masse without manual entry
-    ids=["1", "2"]
-)
+# 3 - Load chunked text entries in from a CSV file.
+#Define CSV loader, linebreaking disabled. 
+#Assumes all text chunked, all entries in a single CSV column, no column header.
+def load_csv(file_path):
+    with open(file_path, newline='', encoding='utf-8') as textfile:
+        reader = csv.reader(textfile)
+        for row in reader:
+            yield row[0]
+            
+#Define batch loader to not ingest the entire CSV in one go.
+def batch_loader(generator, batch_size=200):
+    batch = []
+    for item in generator:
+        batch.append(item)
+        if len(batch) == batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+            
+#Add loaded batch to Chroma Database
+#We can build this outfurther to append metadata
+data_gen = load_csv("INSERT_FILEPATH_HERE.csv")
+for i, batch in enumerate(batch_loader(data_gen, batch_size=200)):
+    try:
+        collection.add(
+            documents=batch,
+            # Uses 128-bit random generator to make unique global ID per chunk entry
+            ids=[str(uuid.uuid4()) for _ in batch])
+    #Prints failure point if there is an error.
+    except Exception as e:
+        print(f"Error inserting batch {i}: {e}")
 
 # 4 - Basic query for Database Collection
 # Returns n chunks with highest embedding similarity to query text
