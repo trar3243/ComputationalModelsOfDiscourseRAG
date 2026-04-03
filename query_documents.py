@@ -9,7 +9,7 @@ Usage:
 """
 
 import chromadb
-from google import genai
+import google.genai as genai
 from sentence_transformers import SentenceTransformer
 
 
@@ -20,6 +20,8 @@ from config import (
     CHROMA_DB_PATH,
     COLLECTION_NAME,
 )
+
+print(GEMINI_API_KEY)
 
 from index_documents import LocalEmbeddingFunction
 
