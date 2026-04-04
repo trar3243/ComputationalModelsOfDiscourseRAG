@@ -1,4 +1,5 @@
 import sys, os
+import gc
 import torch
 from transformers import AutoTokenizer
 import json
@@ -13,7 +14,8 @@ from ClassDefinition.segmenter import Segmenter
 
 required_arguments = []
 optional_arguments = {
-    "dataPath": f"{CMDDROOT}/Data/"
+    "dataPath": f"{CMDDROOT}/Data/",
+    "verbose": "False"
 }
 g_Logger = Logger(__name__)
 g_ArgParse = ArgumentParser()
@@ -36,6 +38,7 @@ def initialize(inputArguments):
         e.add_note(USAGE) # add usage note 
         raise
     g_ArgParse.set("device", "cuda" if torch.cuda.is_available() else "cpu")
+    g_ArgParse.set("verbose", True if g_ArgParse.get('verbose')=="True" else False) # string to bool 
     g_ArgParse.printArguments()
 
 def path_to_text(path):
@@ -69,6 +72,16 @@ def main(inputArguments):
         for path in paths:
             text = path_to_text(path)
             source_file_name = Path(path).name 
+            clusters = segmenter.get_clusters(text)
+            if(g_ArgParse.get('verbose')):
+                print(f"Found {len(clusters)} global clusters:")
+                for i, cluster in enumerate(clusters): 
+                    # Slice the original text using the start and end character indices
+                    words = [text[start:end].replace('\n', ' ') for start, end in cluster]
+                    
+                    # Print the list of strings found in this cluster
+                    print(f"Cluster {i}: {words}")
+                print("--------------------------------------------------\n")
             
             for method in method_list:
                 for window_name, window_params in search_window_list.items():
@@ -83,6 +96,7 @@ def main(inputArguments):
                             # run it 
                             chunks = segmenter.coreference_chunk_text(
                                 text=text,
+                                clusters=clusters,
                                 method=method,
                                 target_size_tokens=target_size,
                                 search_window=search_win,
@@ -116,6 +130,10 @@ def main(inputArguments):
                             output_file = output_dir / "chunks_output.json"
                             with open(output_file, 'w', encoding='utf-8') as f:
                                 json.dump(output_data, f, indent=4)
+            del clusters
+            del text
+            gc.collect()
+            torch.cuda.empty_cache()
 
 
 
