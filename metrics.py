@@ -87,8 +87,45 @@ def entity_concentration(mention_chunks: list[list[int]], total_chunks: int) -> 
 
 
 # ---------------------------------------------------------------------------
-# Character-based chunking helper (LitBank / any tokenised-sentence corpus)
+# Character-based chunking helpers (LitBank / any tokenised-sentence corpus)
 # ---------------------------------------------------------------------------
+
+def _build_offsets(sentences: list[list[str]]) -> tuple[dict[tuple[int, int], int], str]:
+    """
+    Flatten tokenised sentences into a single space-joined string and record
+    the character start position of every token.
+
+    Returns
+    -------
+    token_char_start : dict mapping (sent_id, tok_idx) -> char position in flat_text
+    flat_text        : the full document as a single string
+    """
+    token_char_start: dict[tuple[int, int], int] = {}
+    pos = 0
+    for sent_id, sent in enumerate(sentences):
+        for tok_idx, token in enumerate(sent):
+            token_char_start[(sent_id, tok_idx)] = pos
+            pos += len(token) + 1  # +1 for the space separator
+    flat_text = " ".join(token for sent in sentences for token in sent)
+    return token_char_start, flat_text
+
+
+def chunk_text(sentences: list[list[str]], chunk_size: int = 100) -> list[str]:
+    """
+    Split the document into fixed-size character chunks.
+
+    Parameters
+    ----------
+    sentences  : List[List[str]] — tokenised sentences
+    chunk_size : number of characters per chunk
+
+    Returns
+    -------
+    List[str] — the text of each chunk in order
+    """
+    _, flat_text = _build_offsets(sentences)
+    return [flat_text[i : i + chunk_size] for i in range(0, max(len(flat_text), 1), chunk_size)]
+
 
 def build_mention_chunks_char(
     coref_chains: list[list[list[int]]],
@@ -96,8 +133,7 @@ def build_mention_chunks_char(
     chunk_size: int = 100,
 ) -> tuple[list[list[int]], int]:
     """
-    Flatten tokenised sentences into a single character stream, then assign
-    each mention to the chunk that contains its first character.
+    Assign each mention to the chunk that contains its first character.
 
     Parameters
     ----------
@@ -110,17 +146,8 @@ def build_mention_chunks_char(
     mention_chunks : List[List[int]] — chunk-id per mention, ready for the metrics
     total_chunks   : int
     """
-    # Map (sent_id, tok_idx) -> character start position in the flat text
-    # Tokens are joined with a single space between them.
-    token_char_start: dict[tuple[int, int], int] = {}
-    pos = 0
-    for sent_id, sent in enumerate(sentences):
-        for tok_idx, token in enumerate(sent):
-            token_char_start[(sent_id, tok_idx)] = pos
-            pos += len(token) + 1  # +1 for the space after the token
-
-    total_chars  = max(pos - 1, 1)  # strip the trailing space
-    total_chunks = (total_chars + chunk_size - 1) // chunk_size
+    token_char_start, flat_text = _build_offsets(sentences)
+    total_chunks = (max(len(flat_text), 1) + chunk_size - 1) // chunk_size
 
     mention_chunks = []
     for chain in coref_chains:
