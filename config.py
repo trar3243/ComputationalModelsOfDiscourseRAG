@@ -24,4 +24,4 @@ DOCUMENTS_DIR = "./documents"
 
 # Chunking hyperparameters for splitting docs
 CHUNK_SIZE = 300
-CHUNK_OVERLAP = 100
+CHUNK_OVERLAP = 25
