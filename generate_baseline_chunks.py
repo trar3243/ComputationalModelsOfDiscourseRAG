@@ -18,19 +18,22 @@ import os
 from pathlib import Path
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from transformers import AutoTokenizer
 
 from config import CHUNK_SIZE, CHUNK_OVERLAP
 
 LOONG_DOCS_DIR    = Path("documents/loong_docs")
-OUTPUT_BASE_DIR   = Path("chunks_baseline")
+OUTPUT_BASE_DIR   = Path("chunks_baseline_300_tok")
 SUPPORTED_EXTS    = {".txt", ".md"}
+
+tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
 
 
 def chunk_text(text: str) -> list[str]:
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
-        length_function=len,
+        length_function=lambda t: len(tokenizer.encode(t, add_special_tokens=False)),
         separators=["\n\n", "\n", ". ", " ", ""],
         keep_separator=True,
     )
@@ -65,8 +68,8 @@ def main():
                 "domain":                domain,
                 "source_file":           source_file,
                 "method":                "recursive_character",
-                "chunk_size_chars":      CHUNK_SIZE,
-                "chunk_overlap_chars":   CHUNK_OVERLAP,
+                "chunk_size_tokens":     CHUNK_SIZE,
+                "chunk_overlap_tokens":  CHUNK_OVERLAP,
                 "total_chunks_generated": len(chunks),
             },
             "chunks": chunks,
