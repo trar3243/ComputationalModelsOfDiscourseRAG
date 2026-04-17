@@ -1,4 +1,4 @@
-packages=(torch transformers maverick-coref fastcoref) # maverick-coref requires export PYTHONUTF8=1. 
+packages=(torch transformers fastcoref datasets) # maverick-coref requires export PYTHONUTF8=1. 
 for item in "${packages[@]}"; do
     if python -m pip show $item &> /dev/null; then
         echo "Skipping install of $item"

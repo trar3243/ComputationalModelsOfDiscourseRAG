@@ -3,6 +3,7 @@ from ClassDefinition.Utils import Logger# type: ignore
 import torch 
 import os 
 import re
+import math 
 from fastcoref import FCoref
 from fastcoref.modeling import FCorefModel
 FCorefModel.all_tied_weights_keys = property(lambda self: {}) # fix transformers 5.0 compat
@@ -190,14 +191,92 @@ class Segmenter:
         return graph 
 
 
+    def coreference_chunk_text_nonlinear(self, 
+        text: str, clusters, target_size_tokens: int, search_window: int, full_sentence_inclusion: bool, weighted: bool,
+        encoded, offsets,sent_char_spans,token_to_sent
+    ):
+        num_tokens = len(offsets) # number of tokens 
+        ### graph construction ###
+        # graph spans the tokens, encodes cost of cutting at each token 
+        matrix = list() # will be a list of lists (matrix)
+        for cluster in clusters:
+            vector = [0.0] * (num_tokens)
+            vector = self.__most_recent_cluster_graph_addition__(cluster,text,vector,offsets) # assume most recent method (not most recent low accessible)
+            matrix.append(vector)
+        
+        # now, the matrix has rows corresponding to tokens. 
+        # it's got token edge counts. Maybe a lot of them.... 
+        # now, we want to normalize. Essentially, if "Robert" is mentioned everywhere in the document (long span), then we don't care about him for what we want to do here 
+        # however, if Bob is mentioned only one specific place - yay! he's chilling and we want to get information about him 
+        # so, we normalize by dividing each cell by the corresponding sum of edges crossing 
+        for row in matrix: 
+            counter = 0 
+            for item in row:
+                counter = counter + item 
+            for item in row:
+                # log(x) - log(y) = log(x/y)
+                item = math.log(item) - math.log(counter) # prevent underflow while maintiaining ordering (allow for negative infinity when item is high )
+        
+
+
+        ### Chunk construction ### 
+        chunks = list()
+        chunk_start = 0 
+        while chunk_start < num_tokens:
+            window_start = chunk_start + target_size_tokens - search_window
+            window_end = chunk_start + target_size_tokens + search_window
+            
+            # take rest of text 
+            if window_start >= num_tokens:
+                chunk_end = num_tokens - 1
+            else:
+                # Cap the window_end so we don't search past the end of the document
+                actual_window_end = min(window_end, num_tokens)
+
+                window_costs = graph[window_start:actual_window_end]
+                # if all identical...
+                if len(set(window_costs)) <= 1:
+                    # Default to the exact target size. 
+                    chunk_end = min(chunk_start + target_size_tokens - 1, num_tokens - 1)
+                else:
+                    # Initialize with infinity for both weight and distance
+                    min_cut_tuple = (float('inf'), float('inf'))
+                    best_cut = window_start 
+                    # The absolute ideal cut based on target size alone 
+                    ideal_cut = chunk_start + target_size_tokens - 1
+                    
+                    for i in range(window_start, actual_window_end):
+                        distance_to_ideal = abs(i - ideal_cut)
+                        # Create a tuple: (Primary Sorting, Secondary Sorting)
+                        current_cut = (graph[i], distance_to_ideal)
+                        # If there is a tie, it will pick the one with the smaller distance_to_ideal.
+                        if current_cut < min_cut_tuple:
+                            min_cut_tuple = current_cut
+                            best_cut = i
+                    
+                    chunk_end = best_cut
+            if full_sentence_inclusion and chunk_end in token_to_sent:
+                chunk_end = token_to_sent[chunk_end][1]
+                
+                chunk_end = min(chunk_end, num_tokens - 1)
+                
+            chunks.append(text[offsets[chunk_start][0]:offsets[chunk_end][1]])
+            
+            chunk_start = chunk_end + 1
+
+        return chunks 
+
+        return 
 
     # returns an array of chunks 
     def coreference_chunk_text(self, text:str, clusters, method: str, target_size_tokens: int, search_window: int, full_sentence_inclusion: bool, weighted:bool):
         ### Initialization ### 
-        if(method not in ["most_recent", "most_recent_low_accessible"]):
-            raise Exception(f'Supplied method {method} not in ["most_recent", "most_recent_low_accessible"]')
+        if(method not in ["most_recent", "most_recent_low_accessible", "nonlinear"]):
+            raise Exception(f'Supplied method {method} not in ["most_recent", "most_recent_low_accessible","nonlinear"]')
         self.method = method # update the class instance for each run for method. 
         self.weighted = weighted # update the class instance for each run for weighted. 
+
+        
 
         if not text.strip(): return list() 
         encoded = self.tokenizer(text,return_offsets_mapping=True, add_special_tokens=False) 
@@ -218,6 +297,10 @@ class Segmenter:
             
             for i in range(t_start, t_end + 1):
                 token_to_sent[i] = (t_start, t_end)
+
+        # totally different method. Return. 
+        if(self.method=="nonlinear"):
+            return self.coreference_chunk_text_nonlinear(text, clusters,target_size_tokens,search_window, full_sentence_inclusion, weighted, encoded, offsets, sent_char_spans, token_to_sent)
 
         ### graph construction ###
         # graph spans the tokens, encodes cost of cutting at each token 
