@@ -190,7 +190,44 @@ class Segmenter:
             graph = self.__most_recent_cluster_graph_addition__(sub_cluster,text,graph,offsets,True) # force tie to first 
         return graph 
 
+    def transform_matrix_log_space(matrix):
+        # log(x) - log(y) = log(x/y)
+        # prevent underflow 
+        for i in range(len(matrix)):
+            row = matrix[i]
+        
+            row_sum = sum(row)
+            nonzero_count = sum(1 for item in row if item != 0)
+        
+            if row_sum == 0:
+                for j in range(len(row)):
+                    matrix[i][j] = float('-inf')
+                continue
+            
+            log_row_sum = math.log(row_sum)
+        
+            for j in range(len(row)):
+                item = row[j]
+            
+                if item == 0:
+                    matrix[i][j] = float('-inf')
+                else:
+                    matrix[i][j] = nonzero_count * (math.log(item) - log_row_sum)
+                
+        return matrix
+    def get_max_row_index_for_column(matrix, col_idx):
+        max_val = float('-inf')
+        max_row_idx = -1
 
+        for r in range(len(matrix)):
+            current_val = matrix[r][col_idx]
+
+            # If we find a new higher value, update our trackers
+            if current_val > max_val:
+                max_val = current_val
+                max_row_idx = r
+
+        return max_row_idx
     def coreference_chunk_text_nonlinear(self, 
         text: str, clusters, target_size_tokens: int, search_window: int, full_sentence_inclusion: bool, weighted: bool,
         encoded, offsets,sent_char_spans,token_to_sent
@@ -209,20 +246,30 @@ class Segmenter:
         # now, we want to normalize. Essentially, if "Robert" is mentioned everywhere in the document (long span), then we don't care about him for what we want to do here 
         # however, if Bob is mentioned only one specific place - yay! he's chilling and we want to get information about him 
         # so, we normalize by dividing each cell by the corresponding sum of edges crossing 
-        for row in matrix: 
-            counter = 0 
-            for item in row:
-                counter = counter + item 
-            for item in row:
-                # log(x) - log(y) = log(x/y)
-                item = math.log(item) - math.log(counter) # prevent underflow while maintiaining ordering (allow for negative infinity when item is high )
-        
+        matrix = transform_matrix_log_space(matrix) 
 
 
         ### Chunk construction ### 
+        # assume the user has set the maximum chunk size to be the target_size_tokens+search window. 
+        # we will use this maximum as our product threshold 
+        max_chunk_size = target_size_tokens + search_window 
+        # b/c the minimum value achievable by any entity that spans leq max_tokens is max_tokens^(-max_tokens), we set the threshold to be the log of this 
+        # issue with this below, rounds in the middle b/c python dumb 
+        # threshold = math.log(max_chunk_size**(-1 * max_chunk_size))
+        threshold = -max_chunk_size * math.log(max_chunk_size)
+
         chunks = list()
-        chunk_start = 0 
-        while chunk_start < num_tokens:
+        chunks.append(text[offsets[0][0]:offsets[target_size_tokens][1]])
+        t = target_size_tokens  
+        while True:
+            max_row_index_for_column = get_max_row_index_for_column(matrix, t) 
+            if(matrix[max_row_index_for_column][t] <= threshold):
+                # we havent found something worth while, sadly. We default to the ordinary 
+            else:
+                # figure out the first place it was mentioned 
+
+
+
             window_start = chunk_start + target_size_tokens - search_window
             window_end = chunk_start + target_size_tokens + search_window
             
