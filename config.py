@@ -23,5 +23,5 @@ COLLECTION_NAME = "my_documents"
 DOCUMENTS_DIR = "./documents"
 
 # Chunking hyperparameters for splitting docs (measured in tokens)
-CHUNK_SIZE = 300
-CHUNK_OVERLAP = 25
+CHUNK_SIZE = 258
+CHUNK_OVERLAP = 0
