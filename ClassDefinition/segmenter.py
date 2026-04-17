@@ -266,7 +266,21 @@ class Segmenter:
             if(matrix[max_row_index_for_column][t] <= threshold):
                 # we havent found something worth while, sadly. We default to the ordinary 
             else:
-                # figure out the first place it was mentioned 
+                # figure out the first place it was mentioned
+                edge_start = t 
+                while(matrix[max_row_index_for_column][edge_start] >= threshold):
+                    edge_start = edge_start - 1
+                edge_end = t 
+                while(matrix[max_row_index_for_column][edge_end] >= threshold):
+                    edge_end = edge_end + 1
+                
+                chunk_start = token_to_sent[][]
+                chunk_end = token_to_sent[edge_end][1]
+                
+                chunk_end = min(chunk_end, num_tokens - 1)
+                
+            chunks.append(text[offsets[chunk_start][0]:offsets[chunk_end][1]])
+
 
 
 
