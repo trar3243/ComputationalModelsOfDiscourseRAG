@@ -4,5 +4,5 @@ Data/*
 .DS_Store
 .conda
 .env
-*.json
+# *.json
 clusters/
