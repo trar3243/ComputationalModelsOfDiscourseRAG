@@ -51,7 +51,7 @@ class Segmenter:
 
         # 6. Proper Nouns / Names (Lowest accessibility)
         return 1.0
-    def get_clusters(self, text, max_chunk_chars=13000, overlap_chars=4000):
+    def get_clusters(self, text, max_chunk_chars=8500, overlap_chars=2500):
         # had to do special stuff to not crash GPU memory 
         # basically has sliding window over chunks of the text, then resolves the coreference chain. Means that a chain that spans more than 4000 characters which has not mentions within that window
         # is lost. However, this is likely not an issue with the purpose of this class. 
@@ -66,7 +66,7 @@ class Segmenter:
         with torch.inference_mode():
             while i < text_len:
                 end = min(i + max_chunk_chars, text_len)
-                
+                print(f"i={i}/{text_len}")
                 if end < text_len:
                     safe_cut = text.rfind('\n', i, end)
                     if safe_cut == -1 or safe_cut < i + (max_chunk_chars // 2):
@@ -78,7 +78,7 @@ class Segmenter:
                 text_chunk = text[i:end]
                 
                 if text_chunk.strip():
-                    preds = self.model.predict(texts=[text_chunk], max_tokens_in_batch=1024)
+                    preds = self.model.predict(texts=[text_chunk], max_tokens_in_batch=512)
                     chunk_clusters = preds[0].get_clusters(as_strings=False)
                     
                     for cluster in chunk_clusters:
@@ -96,7 +96,7 @@ class Segmenter:
                         if len(shifted_cluster) > 1:
                             all_shifted_clusters.append(shifted_cluster)
                 
-                if end >= text_len:
+                """if end >= text_len:
                     break
                     
                 next_start_tentative = end - overlap_chars
@@ -108,7 +108,26 @@ class Segmenter:
                 if safe_start != -1 and safe_start > i:
                     i = safe_start + 1
                 else:
-                    i = next_start_tentative
+                    i = next_start_tentative"""
+
+                
+                if end >= text_len:
+                    break
+
+                next_start_tentative = end - overlap_chars
+
+                # Ensure we never step backwards or get stuck in place.
+                # The next search MUST start after the current 'i'.
+                search_start = max(i + 1, next_start_tentative)
+
+                safe_start = text.find('\n', search_start, end)
+                if safe_start == -1:
+                    safe_start = text.find(' ', search_start, end)
+
+                if safe_start != -1:
+                    i = safe_start + 1
+                else:
+                    i = search_start
 
         # Merging
         span_graph = {}
@@ -264,6 +283,7 @@ class Segmenter:
         while True:
             max_row_index_for_column = get_max_row_index_for_column(matrix, t) 
             if(matrix[max_row_index_for_column][t] <= threshold):
+                pass 
                 # we havent found something worth while, sadly. We default to the ordinary 
             else:
                 # figure out the first place it was mentioned
@@ -274,7 +294,8 @@ class Segmenter:
                 while(matrix[max_row_index_for_column][edge_end] >= threshold):
                     edge_end = edge_end + 1
                 
-                chunk_start = token_to_sent[][]
+                #TODO 
+                # chunk_start = token_to_sent[][]
                 chunk_end = token_to_sent[edge_end][1]
                 
                 chunk_end = min(chunk_end, num_tokens - 1)
@@ -332,7 +353,7 @@ class Segmenter:
     # returns an array of chunks 
     def coreference_chunk_text(self, text:str, clusters, method: str, target_size_tokens: int, search_window: int, full_sentence_inclusion: bool, weighted:bool):
         ### Initialization ### 
-        if(method not in ["most_recent", "most_recent_low_accessible", "nonlinear"]):
+        if(method not in ["most_recent", "most_recent_low_accessible"]):
             raise Exception(f'Supplied method {method} not in ["most_recent", "most_recent_low_accessible","nonlinear"]')
         self.method = method # update the class instance for each run for method. 
         self.weighted = weighted # update the class instance for each run for weighted. 
@@ -413,7 +434,6 @@ class Segmenter:
                 chunk_end = token_to_sent[chunk_end][1]
                 
                 chunk_end = min(chunk_end, num_tokens - 1)
-                
             chunks.append(text[offsets[chunk_start][0]:offsets[chunk_end][1]])
             
             chunk_start = chunk_end + 1

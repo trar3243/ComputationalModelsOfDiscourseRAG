@@ -242,6 +242,140 @@ def OntoNotes(segmenter):
         del text
         gc.collect()
         torch.cuda.empty_cache()
+def LOONG_generate_all_chunks_prepercent(segmenter):
+    root_path = Path(CMDDROOT)
+
+    base_dir = root_path / "documents/loong_docs"
+    source_list = []
+    source_list.extend(base_dir.glob("financial/*.txt"))
+    source_list.extend(base_dir.glob("paper/*.md"))
+
+    method = "most_recent"
+    target_size_tokens = 258
+    search_window = 254
+    full_sentence_included = False
+    weighted = False
+
+    folder_name = f"method={method}_target_size_tokens={target_size_tokens}_search_window={search_window}_full_sent={full_sentence_included}_weighted={weighted}"
+
+    output_dir = root_path / "chunks" / folder_name
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    skipped_count = 0
+
+    for path in source_list:
+        # Define the output path first
+        json_file_path = output_dir / f"{path.stem}.json"
+
+        # Check if the output file already exists and skip if it does
+        if json_file_path.exists():
+            print(f"Skipping {path.name}: {json_file_path.name} already exists.")
+            skipped_count += 1
+            continue
+
+        text = path_to_text(path)
+        clusters = segmenter.get_clusters(text)
+
+        chunks = segmenter.coreference_chunk_text(
+            text=text,
+            clusters=clusters,
+            method=method,
+            target_size_tokens=target_size_tokens,
+            search_window=search_window,
+            full_sentence_inclusion=full_sentence_included,
+            weighted=weighted
+        )
+
+        output_data = {
+            "source_file_name": path.name,
+            "chunks": chunks
+        }
+
+        # Write to JSON
+        with open(json_file_path, 'w', encoding='utf-8') as f:
+            json.dump(output_data, f, indent=4, ensure_ascii=False)
+
+        del clusters
+        del text
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    processed_count = len(source_list) - skipped_count
+    print(f"Successfully processed {processed_count} files (skipped {skipped_count}) into: {output_dir}")
+def LOONG_generate_all_chunks(segmenter):
+    root_path = Path(CMDDROOT)
+
+    base_dir = root_path / "documents/loong_docs"
+    source_list = []
+    source_list.extend(list(base_dir.glob("financial/*.txt")))
+    source_list.extend(list(base_dir.glob("paper/*.md")))
+
+    total_docs = len(source_list)
+    if total_docs == 0:
+        print("No documents found.")
+        return
+
+    method = "most_recent"
+    target_size_tokens = 258
+    search_window = 254
+    full_sentence_included = False
+    weighted = False
+
+    folder_name = f"method={method}_target_size_tokens={target_size_tokens}_search_window={search_window}_full_sent={full_sentence_included}_weighted={weighted}"
+
+    output_dir = root_path / "chunks" / folder_name
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    skipped_count = 0
+
+    # Use enumerate to track the current position (starting at 1 for percentage calculation)
+    for i, path in enumerate(source_list, start=1):
+        # Calculate percentage
+        percent_complete = (i / total_docs) * 100
+        
+        # Define the output path first
+        json_file_path = output_dir / f"{path.stem}.json"
+
+        # Check if the output file already exists and skip if it does
+        if json_file_path.exists():
+            print(f"[{percent_complete:.2f}%] Skipping {path.name}: {json_file_path.name} already exists.")
+            skipped_count += 1
+            continue
+            
+        print(f"[{percent_complete:.2f}%] Processing {path.name}...")
+
+        text = path_to_text(path)
+        clusters = segmenter.get_clusters(text)
+
+        chunks = segmenter.coreference_chunk_text(
+            text=text,
+            clusters=clusters,
+            method=method,
+            target_size_tokens=target_size_tokens,
+            search_window=search_window,
+            full_sentence_inclusion=full_sentence_included,
+            weighted=weighted
+        )
+
+        output_data = {
+            "source_file_name": path.name,
+            "chunks": chunks
+        }
+
+        # Write to JSON
+        with open(json_file_path, 'w', encoding='utf-8') as f:
+            json.dump(output_data, f, indent=4, ensure_ascii=False)
+
+        del clusters
+        del text
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    processed_count = total_docs - skipped_count
+    print(f"Successfully processed {processed_count} files (skipped {skipped_count}) into: {output_dir}")
+
 
 def main(inputArguments):
     initialize(inputArguments)
@@ -249,7 +383,9 @@ def main(inputArguments):
     tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
     segmenter = Segmenter(g_ArgParse.get("device"), tokenizer)
     
-    LOONG(segmenter)
+    # LOONG(segmenter)
+    LOONG_generate_all_chunks(segmenter)
+
     
 
     
