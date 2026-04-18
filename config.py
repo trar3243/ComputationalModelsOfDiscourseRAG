@@ -10,7 +10,12 @@ load_dotenv()
 
 # Gemini API (used only for generation, not embeddings)
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GENERATION_MODEL = "gemini-3.1-flash-lite-preview"
+
+# Change this based on your quota
+GENERATION_MODEL = "gemini-2.5-flash"
+#GENERATION_MODEL = "gemma-4-31b-it"
+#GENERATION_MODEL = "gemma-3-27b-it"
+#GENERATION_MODEL = "gemini-3.1-flash-lite-preview"
 
 # Local embedding model (no API key needed and same as the one used usually for embedding generation in the ChromaDB cloud version)
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
@@ -22,6 +27,7 @@ COLLECTION_NAME = "my_documents"
 # Documents directory where we store .txt documents
 DOCUMENTS_DIR = "./documents"
 
-# Chunking hyperparameters for splitting docs (measured in tokens)
-CHUNK_SIZE = 258
-CHUNK_OVERLAP = 0
+# Chunking hyperparameters for splitting docs
+# not neeeded for our corefernce tests
+CHUNK_SIZE = 300
+CHUNK_OVERLAP = 100

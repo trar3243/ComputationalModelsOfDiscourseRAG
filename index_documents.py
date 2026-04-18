@@ -32,7 +32,7 @@ from config import (
 
 def load_text_files(directory: str) -> list[dict]:
     documents = []
-    txt_files = glob.glob(os.path.join(directory, "*.txt"))
+    txt_files = glob.glob(os.path.join(directory, "*.txt")) + glob.glob(os.path.join(directory, "*.md"))
 
     if not txt_files:
         print(f"No .txt files found in '{directory}'.")
@@ -52,6 +52,8 @@ def load_text_files(directory: str) -> list[dict]:
 # Step 2: Chunking with LangChain
 
 def chunk_documents(documents: list[dict]) -> tuple[list[str], list[str], list[dict]]:
+    # delete this when we have the chunked texts
+    # but used for baseline
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,

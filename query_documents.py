@@ -61,27 +61,30 @@ def retrieve(
 # Step 6: Generating an answer using Gemini 3.1 Flash-Lite
 
 def generate_answer(query: str, retrieved_docs: dict) -> str:
+    """Build a RAG prompt from the user query and retrieved ChromaDB chunks."""
     context_parts = []
-    for i, (doc, metadata) in enumerate(
-        zip(retrieved_docs["documents"][0], retrieved_docs["metadatas"][0])
+    for doc, metadata in zip(
+        retrieved_docs["documents"][0], retrieved_docs["metadatas"][0]
     ):
         source = metadata.get("source", "unknown")
         context_parts.append(f"[Source: {source}]\n{doc}")
-
     context = "\n\n---\n\n".join(context_parts)
 
     prompt = f"""You are a helpful assistant that answers questions based on the provided context.
-    Use ONLY the information from the context below to answer the question.
-    If the context doesn't contain enough information to answer, say so clearly.
-    Break your answer up into nicely readable paragraphs.
-    Cite which source file(s) your answer comes from.
+            Use ONLY the information from the context below to answer the question.
+            If the context doesn't contain enough information to answer, say so clearly.
+            Break your answer up into nicely readable paragraphs.
+            Cite which source file(s) your answer comes from.
 
-    CONTEXT:
-    {context}
+            We kindly ask you to review the financial statements of the companies provided above and answer the following questions based solely on the information you have seen. 
+            If the question involves content not found in the financial statements, you may ignore this part and only answer the other parts.
+            
+            CONTEXT:
+            {context}
 
-    QUESTION: {query}
+            QUESTION: {query}
 
-    ANSWER:"""
+            ANSWER:"""
 
     response = client_genai.models.generate_content(
         model=GENERATION_MODEL,
@@ -93,6 +96,7 @@ def generate_answer(query: str, retrieved_docs: dict) -> str:
 
 # Query pipeline
 
+# try with top-10 results
 def ask(
     collection: chromadb.Collection,
     query: str,
@@ -104,8 +108,7 @@ def ask(
     if not retrieved["documents"][0]:
         return "No relevant documents found for your query."
 
-    answer = generate_answer(query, retrieved)
-    return answer
+    return generate_answer(query, retrieved)
 
 
 # MAIN
