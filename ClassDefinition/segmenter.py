@@ -209,7 +209,7 @@ class Segmenter:
             graph = self.__most_recent_cluster_graph_addition__(sub_cluster,text,graph,offsets,True) # force tie to first 
         return graph 
 
-    def transform_matrix_log_space(matrix):
+    def transform_matrix_log_space(self,matrix):
         # log(x) - log(y) = log(x/y)
         # prevent underflow 
         for i in range(len(matrix)):
@@ -234,7 +234,7 @@ class Segmenter:
                     matrix[i][j] = nonzero_count * (math.log(item) - log_row_sum)
                 
         return matrix
-    def get_max_row_index_for_column(matrix, col_idx):
+    def get_max_row_index_for_column(self, matrix, col_idx):
         max_val = float('-inf')
         max_row_idx = -1
 
@@ -247,113 +247,115 @@ class Segmenter:
                 max_row_idx = r
 
         return max_row_idx
-    def coreference_chunk_text_nonlinear(self, 
+
+    def coreference_chunk_text_nonlinear(self,
         text: str, clusters, target_size_tokens: int, search_window: int, full_sentence_inclusion: bool, weighted: bool,
         encoded, offsets,sent_char_spans,token_to_sent
     ):
-        num_tokens = len(offsets) # number of tokens 
+        num_tokens = len(offsets) # number of tokens
+        
         ### graph construction ###
-        # graph spans the tokens, encodes cost of cutting at each token 
-        matrix = list() # will be a list of lists (matrix)
+        matrix = list() 
+        flat_graph = [0.0] * num_tokens # NEW: 1D graph to match the most_recent
+        
         for cluster in clusters:
             vector = [0.0] * (num_tokens)
-            vector = self.__most_recent_cluster_graph_addition__(cluster,text,vector,offsets) # assume most recent method (not most recent low accessible)
+            vector = self.__most_recent_cluster_graph_addition__(cluster,text,vector,offsets) 
             matrix.append(vector)
-        
-        # now, the matrix has rows corresponding to tokens. 
-        # it's got token edge counts. Maybe a lot of them.... 
-        # now, we want to normalize. Essentially, if "Robert" is mentioned everywhere in the document (long span), then we don't care about him for what we want to do here 
-        # however, if Bob is mentioned only one specific place - yay! he's chilling and we want to get information about him 
-        # so, we normalize by dividing each cell by the corresponding sum of edges crossing 
-        matrix = transform_matrix_log_space(matrix) 
+            
+            # Accumulate the 1D graph for the ordinary chunk fallback
+            flat_graph = self.__most_recent_cluster_graph_addition__(cluster,text,flat_graph,offsets)
 
+        matrix = self.transform_matrix_log_space(matrix)
 
-        ### Chunk construction ### 
-        # assume the user has set the maximum chunk size to be the target_size_tokens+search window. 
-        # we will use this maximum as our product threshold 
-        max_chunk_size = target_size_tokens + search_window 
-        # b/c the minimum value achievable by any entity that spans leq max_tokens is max_tokens^(-max_tokens), we set the threshold to be the log of this 
-        # issue with this below, rounds in the middle b/c python dumb 
-        # threshold = math.log(max_chunk_size**(-1 * max_chunk_size))
+        ### Chunk construction ###
+        max_chunk_size = target_size_tokens + search_window
         threshold = -max_chunk_size * math.log(max_chunk_size)
 
         chunks = list()
-        chunks.append(text[offsets[0][0]:offsets[target_size_tokens][1]])
-        t = target_size_tokens  
+        
+        # Safe initialization for the first chunk
+        initial_chunk_end = min(target_size_tokens, num_tokens - 1)
+        chunks.append(text[offsets[0][0]:offsets[initial_chunk_end][1]])
+        t = initial_chunk_end
+        
         while True:
-            max_row_index_for_column = get_max_row_index_for_column(matrix, t) 
+            # Safety: Break out if we've reached the end of the document
+            if t >= num_tokens - 1:
+                break
+                
+            max_row_index_for_column = self.get_max_row_index_for_column(matrix, t)
+            
             if(matrix[max_row_index_for_column][t] <= threshold):
-                pass 
-                # we havent found something worth while, sadly. We default to the ordinary 
+                # We haven't found something worthwhile. Default to ordinary.
+                chunk_start = t + 1
+                if chunk_start >= num_tokens:
+                    break
+                    
+                window_start = chunk_start + target_size_tokens - search_window
+                window_end = chunk_start + target_size_tokens + search_window
+
+                if window_start >= num_tokens:
+                    chunk_end = num_tokens - 1
+                else:
+                    actual_window_end = min(window_end, num_tokens)
+                    window_costs = flat_graph[window_start:actual_window_end]
+
+                    if len(set(window_costs)) <= 1:
+                        chunk_end = min(chunk_start + target_size_tokens - 1, num_tokens - 1)
+                    else:
+                        min_cut_tuple = (float('inf'), float('inf'))
+                        best_cut = window_start
+                        ideal_cut = chunk_start + target_size_tokens - 1
+
+                        for i in range(window_start, actual_window_end):
+                            distance_to_ideal = abs(i - ideal_cut)
+                            current_cut = (flat_graph[i], distance_to_ideal)
+                            if current_cut < min_cut_tuple:
+                                min_cut_tuple = current_cut
+                                best_cut = i
+                        
+                        chunk_end = best_cut
+
+                if full_sentence_inclusion and chunk_end in token_to_sent:
+                    chunk_end = token_to_sent[chunk_end][1]
+
+                chunk_end = min(chunk_end, num_tokens - 1)
+                chunks.append(text[offsets[chunk_start][0]:offsets[chunk_end][1]])
+                
+                # Advance pointer
+                t = chunk_end
             else:
                 # figure out the first place it was mentioned
-                edge_start = t 
-                while(matrix[max_row_index_for_column][edge_start] >= threshold):
+                edge_start = t
+                # Added > 0 bounds check to prevent negative index wrap-around
+                while(edge_start > 0 and matrix[max_row_index_for_column][edge_start] >= threshold):
                     edge_start = edge_start - 1
-                edge_end = t 
-                while(matrix[max_row_index_for_column][edge_end] >= threshold):
+                    
+                edge_end = t
+                # < num_tokens - 1 bounds check
+                while(edge_end < num_tokens - 1 and matrix[max_row_index_for_column][edge_end] >= threshold):
                     edge_end = edge_end + 1
-                
-                #TODO 
-                # chunk_start = token_to_sent[][]
-                chunk_end = token_to_sent[edge_end][1]
-                
+
+                # Safe mapping fallback just in case tokens fall outside sentences
+                chunk_start = token_to_sent[edge_start][0] if edge_start in token_to_sent else edge_start
+                chunk_end = token_to_sent[edge_end][1] if edge_end in token_to_sent else edge_end
+
                 chunk_end = min(chunk_end, num_tokens - 1)
+
+                chunks.append(text[offsets[chunk_start][0]:offsets[chunk_end][1]])
                 
-            chunks.append(text[offsets[chunk_start][0]:offsets[chunk_end][1]])
+                # Ensure t constantly moves forward to prevent infinite loops
+                t = max(t + 1, chunk_end)
+
+        return chunks
 
 
-
-
-            window_start = chunk_start + target_size_tokens - search_window
-            window_end = chunk_start + target_size_tokens + search_window
-            
-            # take rest of text 
-            if window_start >= num_tokens:
-                chunk_end = num_tokens - 1
-            else:
-                # Cap the window_end so we don't search past the end of the document
-                actual_window_end = min(window_end, num_tokens)
-
-                window_costs = graph[window_start:actual_window_end]
-                # if all identical...
-                if len(set(window_costs)) <= 1:
-                    # Default to the exact target size. 
-                    chunk_end = min(chunk_start + target_size_tokens - 1, num_tokens - 1)
-                else:
-                    # Initialize with infinity for both weight and distance
-                    min_cut_tuple = (float('inf'), float('inf'))
-                    best_cut = window_start 
-                    # The absolute ideal cut based on target size alone 
-                    ideal_cut = chunk_start + target_size_tokens - 1
-                    
-                    for i in range(window_start, actual_window_end):
-                        distance_to_ideal = abs(i - ideal_cut)
-                        # Create a tuple: (Primary Sorting, Secondary Sorting)
-                        current_cut = (graph[i], distance_to_ideal)
-                        # If there is a tie, it will pick the one with the smaller distance_to_ideal.
-                        if current_cut < min_cut_tuple:
-                            min_cut_tuple = current_cut
-                            best_cut = i
-                    
-                    chunk_end = best_cut
-            if full_sentence_inclusion and chunk_end in token_to_sent:
-                chunk_end = token_to_sent[chunk_end][1]
-                
-                chunk_end = min(chunk_end, num_tokens - 1)
-                
-            chunks.append(text[offsets[chunk_start][0]:offsets[chunk_end][1]])
-            
-            chunk_start = chunk_end + 1
-
-        return chunks 
-
-        return 
 
     # returns an array of chunks 
     def coreference_chunk_text(self, text:str, clusters, method: str, target_size_tokens: int, search_window: int, full_sentence_inclusion: bool, weighted:bool):
         ### Initialization ### 
-        if(method not in ["most_recent", "most_recent_low_accessible"]):
+        if(method not in ["most_recent", "most_recent_low_accessible", "nonlinear"]):
             raise Exception(f'Supplied method {method} not in ["most_recent", "most_recent_low_accessible","nonlinear"]')
         self.method = method # update the class instance for each run for method. 
         self.weighted = weighted # update the class instance for each run for weighted. 

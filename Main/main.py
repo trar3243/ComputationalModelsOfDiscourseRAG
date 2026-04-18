@@ -57,10 +57,10 @@ def LOONG(segmenter):
 
     source_list = {"paper": papers, "financial": financials}
     
-    method_list = ["most_recent", "most_recent_low_accessible"]
+    method_list = ["nonlinear"]
     search_window_list = {
-        "conservative_258": {"target_size_tokens": 258, "search_window": 128}# , # target was 384 
-        # "liberal": {"target_size_tokens": 258, "search_window": 254}
+        "conservative_258": {"target_size_tokens": 258, "search_window": 128}, # target was 384 
+        "liberal": {"target_size_tokens": 258, "search_window": 254}
     }
     full_sentence_inclusion_list = [True, False]
     weighted_list = [True, False]
@@ -383,8 +383,8 @@ def main(inputArguments):
     tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
     segmenter = Segmenter(g_ArgParse.get("device"), tokenizer)
     
-    # LOONG(segmenter)
-    LOONG_generate_all_chunks(segmenter)
+    LOONG(segmenter)
+    # LOONG_generate_all_chunks(segmenter)
 
     
 

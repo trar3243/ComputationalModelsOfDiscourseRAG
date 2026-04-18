@@ -25,9 +25,9 @@ CHROMA_DB_PATH = "./chroma_db"
 COLLECTION_NAME = "my_documents"
 
 # Documents directory where we store .txt documents
-DOCUMENTS_DIR = "./documents"
-
+# DOCUMENTS_DIR = "./documents"
+DOCUMENTS_DIR = "./documents/loong_docs"
 # Chunking hyperparameters for splitting docs
 # not neeeded for our corefernce tests
-CHUNK_SIZE = 300
-CHUNK_OVERLAP = 100
+CHUNK_SIZE = 258
+CHUNK_OVERLAP = 20
