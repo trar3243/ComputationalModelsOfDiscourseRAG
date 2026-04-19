@@ -32,8 +32,8 @@ from config import (
 
 def load_text_files(directory: str) -> list[dict]:
     documents = []
-    txt_files = glob.glob(os.path.join(directory, "*.txt")) + glob.glob(os.path.join(directory, "*.md"))
-
+    # txt_files = glob.glob(os.path.join(directory, "*.txt")) + glob.glob(os.path.join(directory, "*.md"))
+    txt_files = glob.glob(os.path.join(directory, "**/*.txt"), recursive=True) + glob.glob(os.path.join(directory, "**/*.md"), recursive=True)
     if not txt_files:
         print(f"No .txt files found in '{directory}'.")
         return documents

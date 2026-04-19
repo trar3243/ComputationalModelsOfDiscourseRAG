@@ -1,8 +1,8 @@
 *.swp
-*/__pycache__/*
+*/__pycache__
 Data/*
 .DS_Store
 .conda
 .env
-*.json
 clusters/
+chroma_db/

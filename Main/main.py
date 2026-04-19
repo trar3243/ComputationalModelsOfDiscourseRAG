@@ -316,11 +316,11 @@ def LOONG_generate_all_chunks(segmenter):
         print("No documents found.")
         return
 
-    method = "most_recent"
+    method = "nonlinear"
     target_size_tokens = 258
     search_window = 254
     full_sentence_included = False
-    weighted = False
+    weighted = True
 
     folder_name = f"method={method}_target_size_tokens={target_size_tokens}_search_window={search_window}_full_sent={full_sentence_included}_weighted={weighted}"
 
@@ -383,8 +383,8 @@ def main(inputArguments):
     tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
     segmenter = Segmenter(g_ArgParse.get("device"), tokenizer)
     
-    LOONG(segmenter)
-    # LOONG_generate_all_chunks(segmenter)
+    # LOONG(segmenter)
+    LOONG_generate_all_chunks(segmenter)
 
     
 
