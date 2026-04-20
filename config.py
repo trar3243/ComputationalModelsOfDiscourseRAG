@@ -18,8 +18,8 @@ GENERATION_MODEL = "gemini-2.5-flash"
 #GENERATION_MODEL = "gemini-3.1-flash-lite-preview"
 
 # Local embedding model (no API key needed and same as the one used usually for embedding generation in the ChromaDB cloud version)
-# EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
-EMBEDDING_MODEL_NAME = "Qwen/Qwen3-Embedding-8B"
+EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
+# EMBEDDING_MODEL_NAME = "Qwen/Qwen3-Embedding-8B"
 
 # ChromaDB persistent configuration -- If we want to use the cloud, we need to change the client and provide the appropriate API key and URL
 CHROMA_DB_PATH = "./chroma_db"

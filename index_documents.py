@@ -102,7 +102,7 @@ def return_prechunked_texts(chunk_json_path: str) -> tuple[list[str], list[str],
                 continue
             
         # Extract the source filename and the list of chunks
-        source_file = data.get("source_file_name", os.path.basename(filepath))
+        source_file = data.get("source_file_name") or data.get("metadata", {}).get("source_file", os.path.basename(filepath))
         chunks = data.get("chunks", [])
 
         # Build the lists exactly as the LangChain text_splitter block does
