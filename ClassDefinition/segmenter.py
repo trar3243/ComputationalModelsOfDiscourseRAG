@@ -51,7 +51,7 @@ class Segmenter:
 
         # 6. Proper Nouns / Names (Lowest accessibility)
         return 1.0
-    def get_clusters(self, text, max_chunk_chars=8500, overlap_chars=2500):
+    def get_clusters(self, text, max_chunk_chars=10000, overlap_chars=2500):
         # had to do special stuff to not crash GPU memory 
         # basically has sliding window over chunks of the text, then resolves the coreference chain. Means that a chain that spans more than 4000 characters which has not mentions within that window
         # is lost. However, this is likely not an issue with the purpose of this class. 

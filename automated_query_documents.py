@@ -1,4 +1,5 @@
 import sys, os 
+import torch 
 import time 
 import json 
 from pathlib import Path 
@@ -53,12 +54,13 @@ def retrieve_filtered(
     )
     return results
 
-
+breakup = "================================================================================================="
 def main():
     collection = load_collection()
     prompts = read_prompt_input_path()
     
     output_path = "evaluated_loong.jsonl"
+    # output_path = "method=most_recent_target_size_tokens=258_search_window=254_full_sent=False_weighted=False_evaluated_loong.jsonl"
     processed_ids = set()
 
     # Read the output file if it exists and collect all finished IDs
@@ -92,19 +94,27 @@ def main():
                 
             target_files = prompt_data["doc"]
             question = prompt_data["question"]
+            # print(breakup)
+            # print(f"Target Files: {target_files}")
+            # print(breakup)
 
             # Query ChromaDB to get the actual text
             retrieved_data = retrieve_filtered(
                 collection=collection,
                 query=question,
-                n_results=10,
+                n_results=30,
                 target_files=target_files # Using the filter
             )
 
             # Combine retrieved chunks
             retrieved_text = ""
             for chunk in retrieved_data["documents"][0]:
-                retrieved_text += chunk + "\n\n"
+                retrieved_text += chunk + "\n\n---\n\n"
+                # print(breakup)
+                # print(f"Chunk:{chunk}") 
+                # print(breakup)
+
+            
 
             # prompt template expects these data
             prompt_data["docs"] = retrieved_text
@@ -112,6 +122,10 @@ def main():
             # format the template
             template_str = prompt_data["prompt_template"]
             filled_prompt = template_str.format(**prompt_data)
+
+            # print(breakup)
+            # print(f"Filled prompt: {filled_prompt}")
+            # print(breakup)
 
             # Call the LLM
             # ---> ROBUST RETRY LOGIC <---
@@ -122,6 +136,11 @@ def main():
                         model=GENERATION_MODEL,
                         contents=filled_prompt,
                     )
+                    # print(breakup)
+                    # print(f"Gold answer:{prompt_data['answer']}")
+                    # print(breakup)
+                    # print(f"Provided answer:{response.text}")
+                    # print(breakup)
                     prompt_data["answer"] = response.text
                     break # Success! Break out of the retry loop
                     
@@ -138,9 +157,11 @@ def main():
                         # If it's a completely different error, crash normally so you can debug
                         raise e    
             
+
             prompt_data["answer"] = response.text
             prompt_data.pop("docs", None) # dont write our retrieved chunks to the file 
 
+            # break 
             # Write the completed object to the file 
             json_string = json.dumps(prompt_data, ensure_ascii=False)
             f.write(json_string + '\n')
