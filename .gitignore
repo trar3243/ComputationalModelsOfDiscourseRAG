@@ -7,4 +7,3 @@ Data/*
 clusters/
 chroma_db/
 squad_chroma_db/
-chunks_output.json
