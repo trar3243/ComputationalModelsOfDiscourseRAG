@@ -1,18 +1,25 @@
 """
-Index SQuAD baseline chunks into a dedicated ChromaDB collection.
+Index SQuAD chunks into a dedicated ChromaDB collection.
 
-Reads pre-chunked JSONs from: squad_testing/chunks/baseline_258_tok/
-Writes to ChromaDB at:        ./squad_chroma_db/  (collection: "squad_documents")
+Reads pre-chunked JSONs from: squad_testing/chunks/<strategy>/
+Writes to ChromaDB at:        ./squad_chroma_db_<strategy>/  (collection: "squad_<strategy>")
 
 Kept isolated from the LOONG collection so the two corpora don't interfere.
 
 Usage (from repo root):
-    python squad_testing/scripts/index_squad_documents.py
+    python squad_testing/scripts/index_squad_documents.py [--chunks-dir squad_testing/chunks/<strategy>]
+
+Available strategies (squad_testing/chunks/):
+    baseline_258_tok  (default)
+    most_recent_low_acc_258t_w128_wtd
+    most_recent_258t_w254
+    nonlinear_258t_w254
 """
 
 import sys
 import os
 import glob
+import argparse
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))  # repo root
@@ -23,16 +30,24 @@ from sentence_transformers import SentenceTransformer
 from config import EMBEDDING_MODEL_NAME
 from index_documents import LocalEmbeddingFunction, index_documents, return_prechunked_texts
 
-SQUAD_CHROMA_DB_PATH = "./squad_chroma_db"
-SQUAD_COLLECTION_NAME = "squad_documents"
-SQUAD_CHUNKS_DIR = "squad_testing/chunks/baseline_258_tok"
+DEFAULT_CHUNKS_DIR = "squad_testing/chunks/baseline_258_tok"
 
 
-def create_squad_collection(embedding_model: SentenceTransformer) -> chromadb.Collection:
+def collection_name_from_dir(chunks_dir: str) -> str:
+    strategy = Path(chunks_dir).name
+    return f"squad_{strategy}"
+
+
+def chroma_path_from_dir(chunks_dir: str) -> str:
+    strategy = Path(chunks_dir).name
+    return f"./squad_chroma_db_{strategy}"
+
+
+def create_squad_collection(embedding_model: SentenceTransformer, chroma_path: str, collection_name: str) -> chromadb.Collection:
     embed_fn = LocalEmbeddingFunction(embedding_model)
-    client = chromadb.PersistentClient(path=SQUAD_CHROMA_DB_PATH)
+    client = chromadb.PersistentClient(path=chroma_path)
     collection = client.get_or_create_collection(
-        name=SQUAD_COLLECTION_NAME,
+        name=collection_name,
         embedding_function=embed_fn,
     )
     return collection
@@ -72,24 +87,39 @@ def load_chunks_recursive(base_dir: str):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Index SQuAD chunks into ChromaDB.")
+    parser.add_argument(
+        "--chunks-dir",
+        default=DEFAULT_CHUNKS_DIR,
+        help=f"Path to chunked JSONs directory (default: {DEFAULT_CHUNKS_DIR})",
+    )
+    args = parser.parse_args()
+
+    chunks_dir = args.chunks_dir
+    collection_name = collection_name_from_dir(chunks_dir)
+    chroma_path = chroma_path_from_dir(chunks_dir)
+
     print("=" * 60)
     print("Index SQuAD Chunks into ChromaDB")
+    print(f"  strategy:   {Path(chunks_dir).name}")
+    print(f"  collection: {collection_name}")
+    print(f"  chroma db:  {chroma_path}")
     print("=" * 60)
 
-    print(f"\n[1/3] Loading pre-chunked JSONs from '{SQUAD_CHUNKS_DIR}'...")
-    chunks, ids, metadatas = load_chunks_recursive(SQUAD_CHUNKS_DIR)
+    print(f"\n[1/3] Loading pre-chunked JSONs from '{chunks_dir}'...")
+    chunks, ids, metadatas = load_chunks_recursive(chunks_dir)
     if not chunks:
-        print("No chunks found. Run generate_squad_baseline_chunks.py first.")
+        print("No chunks found.")
         return
 
     print(f"\n[2/3] Loading embedding model '{EMBEDDING_MODEL_NAME}'...")
     embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-    collection = create_squad_collection(embedding_model)
+    collection = create_squad_collection(embedding_model, chroma_path, collection_name)
 
-    print(f"\n[3/3] Indexing into ChromaDB collection '{SQUAD_COLLECTION_NAME}'...")
+    print(f"\n[3/3] Indexing into ChromaDB collection '{collection_name}'...")
     index_documents(collection, chunks, ids, metadatas)
 
-    print(f"\nDone! {collection.count()} chunks indexed. Run evaluate_squad.py to evaluate.")
+    print(f"\nDone! {collection.count()} chunks indexed. Run evaluate_squad.py --strategy {Path(chunks_dir).name} to evaluate.")
 
 
 if __name__ == "__main__":

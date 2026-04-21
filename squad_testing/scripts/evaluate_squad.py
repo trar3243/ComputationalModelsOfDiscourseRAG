@@ -2,12 +2,22 @@
 Evaluate the SQuAD RAG pipeline on the SQuAD validation set.
 
 For each SQuAD validation question:
-  1. Retrieve the top-k chunks from ChromaDB, filtered to the article for that question.
+  1. Retrieve the top-k chunks from ChromaDB.
   2. Generate an answer with Gemini.
-  3. Append result to squad_testing/evaluated_squad.jsonl (idempotent).
+  3. Append result to squad_testing/output/evaluated_squad_<strategy>_<retrieval>.jsonl (idempotent).
 
 Usage (from repo root):
-    python squad_testing/scripts/evaluate_squad.py
+    python squad_testing/scripts/evaluate_squad.py [--strategy <strategy>] [--retrieval {filtered,global}]
+
+Available strategies:
+    baseline_258_tok  (default)
+    most_recent_low_acc_258t_w128_wtd
+    most_recent_258t_w254
+    nonlinear_258t_w254
+
+Retrieval modes:
+    filtered  (default) — retrieve only from the gold article's chunks
+    global              — retrieve from all chunks in the collection
 
 Optional: set N_RESULTS and LIMIT to control retrieval depth and how many questions to run.
 """
@@ -17,6 +27,7 @@ import os
 import json
 import re
 import time
+import argparse
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))  # repo root
@@ -30,31 +41,33 @@ from sentence_transformers import SentenceTransformer
 from config import EMBEDDING_MODEL_NAME, GEMINI_API_KEY, GENERATION_MODEL
 from index_documents import LocalEmbeddingFunction
 
-SQUAD_CHROMA_DB_PATH  = "./squad_chroma_db"
-SQUAD_COLLECTION_NAME = "squad_documents"
-OUTPUT_PATH           = "squad_testing/evaluated_squad.jsonl"
-N_RESULTS             = 10    # chunks to retrieve per question
-LIMIT                 = 20  # set to an int (e.g. 100) to stop early; None = full validation set
+DEFAULT_STRATEGY = "baseline_258_tok"
+N_RESULTS        = 10   # chunks to retrieve per question
+LIMIT            = 20   # set to an int (e.g. 100) to stop early; None = full validation set
 
 
 def slugify(title: str) -> str:
     return re.sub(r'[\\/*?:"<>|]', "-", title).strip()
 
 
-def load_collection() -> chromadb.Collection:
+def load_collection(strategy: str) -> chromadb.Collection:
+    chroma_path = f"./squad_chroma_db_{strategy}"
+    collection_name = f"squad_{strategy}"
     model = SentenceTransformer(EMBEDDING_MODEL_NAME)
     embed_fn = LocalEmbeddingFunction(model)
-    client = chromadb.PersistentClient(path=SQUAD_CHROMA_DB_PATH)
-    return client.get_collection(name=SQUAD_COLLECTION_NAME, embedding_function=embed_fn)
+    client = chromadb.PersistentClient(path=chroma_path)
+    return client.get_collection(name=collection_name, embedding_function=embed_fn)
 
 
-def retrieve_filtered(collection, query: str, source_file: str, n_results: int) -> tuple[list[str], list[int]]:
-    results = collection.query(
+def retrieve(collection, query: str, source_file: str, n_results: int, filtered: bool) -> tuple[list[str], list[int]]:
+    kwargs = dict(
         query_texts=[query],
         n_results=n_results,
-        where={"source": {"$in": [source_file]}},
         include=["documents", "metadatas"],
     )
+    if filtered:
+        kwargs["where"] = {"source": {"$in": [source_file]}}
+    results = collection.query(**kwargs)
     if not results["documents"]:
         return [], []
     docs = results["documents"][0]
@@ -90,21 +103,42 @@ def generate_answer(client_genai, context: str, question: str) -> str:
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Evaluate SQuAD RAG pipeline.")
+    parser.add_argument(
+        "--strategy",
+        default=DEFAULT_STRATEGY,
+        help=f"Chunking strategy to evaluate (default: {DEFAULT_STRATEGY})",
+    )
+    parser.add_argument(
+        "--retrieval",
+        choices=["filtered", "global"],
+        default="filtered",
+        help="filtered: retrieve only from the gold article's chunks; global: retrieve from all chunks (default: filtered)",
+    )
+    args = parser.parse_args()
+
+    filtered = args.retrieval == "filtered"
+    output_path = f"squad_testing/output/evaluated_squad_{args.strategy}_{args.retrieval}.jsonl"
+
     if not GEMINI_API_KEY:
         raise EnvironmentError("GEMINI_API_KEY is not set. Run `source ./.env` from the repo root first.")
+
+    print(f"Strategy:  {args.strategy}")
+    print(f"Retrieval: {args.retrieval}")
+    print(f"Output:    {output_path}")
 
     print("Loading SQuAD validation set...")
     squad = load_dataset("rajpurkar/squad", split="train")
 
     print("Loading ChromaDB collection...")
-    collection = load_collection()
+    collection = load_collection(args.strategy)
 
     client_genai = genai.Client(api_key=GEMINI_API_KEY)
 
     # Resume from previous run
     processed_ids: set[str] = set()
-    if os.path.exists(OUTPUT_PATH):
-        with open(OUTPUT_PATH, "r", encoding="utf-8") as f:
+    if os.path.exists(output_path):
+        with open(output_path, "r", encoding="utf-8") as f:
             for line in f:
                 if line.strip():
                     try:
@@ -118,7 +152,7 @@ def main():
     total = min(len(squad), LIMIT) if LIMIT else len(squad)
     counter = 0
 
-    with open(OUTPUT_PATH, "a", encoding="utf-8") as f:
+    with open(output_path, "a", encoding="utf-8") as f:
         for i, example in enumerate(squad):
             if LIMIT and i >= LIMIT:
                 break
@@ -133,7 +167,7 @@ def main():
             gold        = example["answers"]["text"]   # list of acceptable answers
             source_file = f"{slugify(title.replace('_', ' '))}.txt"
 
-            chunks, chunk_indices = retrieve_filtered(collection, question, source_file, N_RESULTS)
+            chunks, chunk_indices = retrieve(collection, question, source_file, N_RESULTS, filtered)
             if not chunks:
                 # Article not in corpus — skip gracefully
                 result = {
@@ -168,7 +202,7 @@ def main():
             counter += 1
             print(f"  [{counter}/{total}] {title!r}: {question[:60]}")
 
-    print(f"\nDone. Results written to '{OUTPUT_PATH}'.")
+    print(f"\nDone. Results written to '{output_path}'.")
 
 
 if __name__ == "__main__":

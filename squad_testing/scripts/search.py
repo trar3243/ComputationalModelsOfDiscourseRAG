@@ -1,12 +1,22 @@
 """
-Interactive search over the SQuAD ChromaDB collection.
+Interactive search over a SQuAD ChromaDB collection.
 
 Shows the top-k retrieved chunks with their source article, chunk index,
 and similarity distance — useful for inspecting retrieval behaviour
 before or alongside running the full eval pipeline.
 
 Usage (from repo root):
-    python squad_testing/scripts/search.py
+    python squad_testing/scripts/search.py [--strategy <strategy>] [--retrieval {filtered,global}]
+
+Available strategies:
+    baseline_258_tok  (default)
+    most_recent_low_acc_258t_w128_wtd
+    most_recent_258t_w254
+    nonlinear_258t_w254
+
+Retrieval modes:
+    filtered  (default) — start with a per-article filter active (set via :filter)
+    global              — start with no filter (search all chunks)
 
 Commands at the prompt:
     <query>          — search and show top-k chunks
@@ -19,6 +29,7 @@ Commands at the prompt:
 import sys
 import os
 import re
+import argparse
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))  # repo root
@@ -29,22 +40,23 @@ from sentence_transformers import SentenceTransformer
 from config import EMBEDDING_MODEL_NAME
 from index_documents import LocalEmbeddingFunction
 
-SQUAD_CHROMA_DB_PATH  = "./squad_chroma_db"
-SQUAD_COLLECTION_NAME = "squad_documents"
-DEFAULT_K             = 5
+DEFAULT_STRATEGY = "baseline_258_tok"
+DEFAULT_K        = 5
 
 
 def slugify(title: str) -> str:
     return re.sub(r'[\\/*?:"<>|]', "-", title).strip()
 
 
-def load_collection() -> chromadb.Collection:
+def load_collection(strategy: str) -> chromadb.Collection:
+    chroma_path = f"./squad_chroma_db_{strategy}"
+    collection_name = f"squad_{strategy}"
     print(f"Loading embedding model '{EMBEDDING_MODEL_NAME}'...")
     model = SentenceTransformer(EMBEDDING_MODEL_NAME)
     embed_fn = LocalEmbeddingFunction(model)
-    client = chromadb.PersistentClient(path=SQUAD_CHROMA_DB_PATH)
-    collection = client.get_collection(name=SQUAD_COLLECTION_NAME, embedding_function=embed_fn)
-    print(f"Collection '{SQUAD_COLLECTION_NAME}' loaded — {collection.count()} chunks indexed.\n")
+    client = chromadb.PersistentClient(path=chroma_path)
+    collection = client.get_collection(name=collection_name, embedding_function=embed_fn)
+    print(f"Collection '{collection_name}' loaded — {collection.count()} chunks indexed.\n")
     return collection
 
 
@@ -82,10 +94,29 @@ def search(collection: chromadb.Collection, query: str, k: int, source_filter: s
 
 
 def main():
-    collection = load_collection()
+    parser = argparse.ArgumentParser(description="Interactive search over a SQuAD ChromaDB collection.")
+    parser.add_argument(
+        "--strategy",
+        default=DEFAULT_STRATEGY,
+        help=f"Chunking strategy to search (default: {DEFAULT_STRATEGY})",
+    )
+    parser.add_argument(
+        "--retrieval",
+        choices=["filtered", "global"],
+        default="filtered",
+        help="filtered: start with per-article filter active; global: start with no filter (default: filtered)",
+    )
+    args = parser.parse_args()
+
+    collection = load_collection(args.strategy)
 
     k             = DEFAULT_K
     source_filter = None
+    if args.retrieval == "filtered":
+        print("  Retrieval mode: filtered (use :filter <title> to set article, :nofilter to clear)")
+
+    if args.retrieval == "global":
+        print("  Retrieval mode: global (searching all chunks — use :filter <title> to restrict)")
 
     print("SQuAD Chunk Search")
     print("  :k <n>           change result count (current: 5)")
