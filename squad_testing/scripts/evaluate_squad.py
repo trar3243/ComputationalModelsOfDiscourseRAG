@@ -81,13 +81,14 @@ def generate_answer(client: anthropic.Anthropic, context: str, question: str) ->
         try:
             response = client.messages.create(
                 model=GENERATION_MODEL,
-                max_tokens=256,
+                max_tokens=64,
                 messages=[
                     {
                         "role": "user",
                         "content": (
-                            "You are a helpful assistant. Use ONLY the provided context to answer the question. "
-                            "Be concise.\n\n"
+                            "You are a helpful assistant. Answer the question using ONLY the provided context.\n"
+                            "Reply with a short phrase or a few words — no explanations, no citations, no 'According to...'.\n"
+                            "If the answer is not in the context, reply with exactly: null\n\n"
                             f"CONTEXT:\n{context}\n\n"
                             f"QUESTION: {question}\n\n"
                             "ANSWER:"
