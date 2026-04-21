@@ -75,6 +75,10 @@ def load_chunks_recursive(base_dir: str):
             data.get("source_file_name")
             or data.get("metadata", {}).get("source_file", os.path.basename(filepath))
         )
+        # Normalize to "Article Name.txt" format to match evaluate_squad.py
+        source_file = source_file.replace("_", " ")
+        if not source_file.endswith(".txt"):
+            source_file += ".txt"
         chunks = data.get("chunks", [])
 
         for i, chunk in enumerate(chunks):
