@@ -4,11 +4,15 @@ Generate 258-token baseline chunks for all 412 SQuAD Wikipedia articles.
 Reads: squad_testing/data/squad_wiki_full_articles.parquet (columns: title, text)
 Writes: squad_testing/chunks/baseline_258_tok/{title_slug}/chunks_output.json
 
-JSON format matches the existing chunks_baseline_258_tok/ convention:
+JSON format:
   {
-      "metadata": { "source_file": "...", "method": "recursive_character", ... },
+      "metadata": { "source_file": "...", "method": "fixed_token_window", ... },
       "chunks": ["...", ...]
   }
+
+Chunking treats each article as a single continuous token stream — no separator
+logic. The full text is tokenized, sliced into non-overlapping 258-token windows,
+then each window is decoded back to a string.
 
 Usage (from repo root):
     python squad_testing/scripts/generate_squad_baseline_chunks.py
@@ -19,32 +23,26 @@ import re
 from pathlib import Path
 
 import pandas as pd
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from transformers import AutoTokenizer
 
 PARQUET_PATH   = Path("squad_testing/data/squad_wiki_full_articles.parquet")
 OUTPUT_BASE    = Path("squad_testing/chunks/baseline_258_tok")
 CHUNK_SIZE     = 258   # tokens
-CHUNK_OVERLAP  = 0
 
 tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/all-MiniLM-L6-v2")
 
 
 def slugify(title: str) -> str:
-    """Turn an article title into a safe filename (preserves spaces, colons → dashes)."""
     return re.sub(r'[\\/*?:"<>|]', "-", title).strip()
 
 
 def chunk_text(text: str) -> list[str]:
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=CHUNK_SIZE,
-        chunk_overlap=CHUNK_OVERLAP,
-        length_function=lambda t: len(tokenizer.encode(t, add_special_tokens=False)),
-        # separators=["\n\n", "\n", ". ", " ", ""],
-        separators=[""],
-        keep_separator=True,
-    )
-    return splitter.split_text(text)
+    token_ids = tokenizer.encode(text, add_special_tokens=False)
+    chunks = []
+    for i in range(0, len(token_ids), CHUNK_SIZE):
+        window = token_ids[i : i + CHUNK_SIZE]
+        chunks.append(tokenizer.decode(window, skip_special_tokens=True))
+    return chunks
 
 
 def main():
@@ -66,9 +64,9 @@ def main():
         output = {
             "metadata": {
                 "source_file":             source_file,
-                "method":                  "recursive_character",
+                "method":                  "fixed_token_window",
                 "chunk_size_tokens":       CHUNK_SIZE,
-                "chunk_overlap_tokens":    CHUNK_OVERLAP,
+                "chunk_overlap_tokens":    0,
                 "total_chunks_generated":  len(chunks),
             },
             "chunks": chunks,
