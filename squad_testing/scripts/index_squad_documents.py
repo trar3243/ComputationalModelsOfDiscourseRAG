@@ -54,12 +54,12 @@ def create_squad_collection(embedding_model: SentenceTransformer, chroma_path: s
 
 
 def load_chunks_recursive(base_dir: str):
-    """Load all chunks_output.json files found recursively under base_dir."""
+    """Load all *.json files found recursively under base_dir."""
     all_chunks, all_ids, all_metadatas = [], [], []
 
-    json_files = glob.glob(os.path.join(base_dir, "**", "chunks_output.json"), recursive=True)
+    json_files = glob.glob(os.path.join(base_dir, "**", "*.json"), recursive=True)
     if not json_files:
-        print(f"No chunks_output.json files found under '{base_dir}'.")
+        print(f"No .json files found under '{base_dir}'.")
         return all_chunks, all_ids, all_metadatas
 
     import json
