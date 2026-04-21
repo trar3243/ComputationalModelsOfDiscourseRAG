@@ -18,6 +18,7 @@ Available strategies (squad_testing/chunks/):
 
 import sys
 import os
+import re
 import glob
 import argparse
 from pathlib import Path
@@ -53,6 +54,35 @@ def create_squad_collection(embedding_model: SentenceTransformer, chroma_path: s
     return collection
 
 
+def _source_file_from_data(data: dict, filepath: str) -> str:
+    """Derive the source file name that exactly matches what evaluate_squad.py constructs.
+
+    evaluate_squad.py builds: slugify(title.replace('_', ' ')) + '.txt'
+    where slugify replaces [\\/*?:"<>|] with '-'.
+
+    Non-baseline JSONs store original_title (e.g. 'High-definition television') which
+    already has the correct punctuation. We apply the same slugify to normalize chars
+    like ':' that the SQuAD title also passes through slugify.
+
+    Baseline JSONs store metadata.source_file which is already correctly formatted.
+    """
+    original_title = data.get("original_title")
+    if original_title:
+        # Non-baseline: slugify matches evaluate_squad.py's normalization exactly
+        slug = re.sub(r'[\\/*?:"<>|]', "-", original_title).strip()
+        return slug + ".txt"
+
+    # Baseline: metadata.source_file is already in the correct format
+    source_file = (
+        data.get("metadata", {}).get("source_file")
+        or data.get("source_file_name", os.path.basename(filepath))
+    )
+    source_file = source_file.replace("_", " ")
+    if not source_file.endswith(".txt"):
+        source_file += ".txt"
+    return source_file
+
+
 def load_chunks_recursive(base_dir: str):
     """Load all *.json files found recursively under base_dir."""
     all_chunks, all_ids, all_metadatas = [], [], []
@@ -71,14 +101,7 @@ def load_chunks_recursive(base_dir: str):
                 print(f"  [SKIP] Could not parse {filepath}")
                 continue
 
-        source_file = (
-            data.get("source_file_name")
-            or data.get("metadata", {}).get("source_file", os.path.basename(filepath))
-        )
-        # Normalize to "Article Name.txt" format to match evaluate_squad.py
-        source_file = source_file.replace("_", " ")
-        if not source_file.endswith(".txt"):
-            source_file += ".txt"
+        source_file = _source_file_from_data(data, filepath)
         chunks = data.get("chunks", [])
 
         for i, chunk in enumerate(chunks):
