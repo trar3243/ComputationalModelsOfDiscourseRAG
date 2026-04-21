@@ -35,11 +35,10 @@ sys.path.append(str(Path(__file__).resolve().parents[2]))  # repo root
 
 import chromadb
 from datasets import load_dataset
-from google.genai import errors
-import google.genai as genai
+import anthropic
 from sentence_transformers import SentenceTransformer
 
-from config import EMBEDDING_MODEL_NAME, GEMINI_API_KEY, GENERATION_MODEL
+from config import EMBEDDING_MODEL_NAME, ANTHROPIC_API_KEY, GENERATION_MODEL
 from index_documents import LocalEmbeddingFunction
 
 DEFAULT_STRATEGY = "baseline_258_tok"
@@ -77,29 +76,33 @@ def retrieve(collection, query: str, source_file: str, n_results: int, filtered:
     return docs, indices
 
 
-def generate_answer(client_genai, context: str, question: str) -> str:
-    prompt = (
-        "You are a helpful assistant. Use ONLY the provided context to answer the question. "
-        "Be concise.\n\n"
-        f"CONTEXT:\n{context}\n\n"
-        f"QUESTION: {question}\n\n"
-        "ANSWER:"
-    )
+def generate_answer(client: anthropic.Anthropic, context: str, question: str) -> str:
     while True:
         try:
-            response = client_genai.models.generate_content(
+            response = client.messages.create(
                 model=GENERATION_MODEL,
-                contents=prompt,
+                max_tokens=256,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            "You are a helpful assistant. Use ONLY the provided context to answer the question. "
+                            "Be concise.\n\n"
+                            f"CONTEXT:\n{context}\n\n"
+                            f"QUESTION: {question}\n\n"
+                            "ANSWER:"
+                        ),
+                    }
+                ],
             )
-            return response.text
-        except (errors.ClientError, errors.ServerError) as e:
-            msg = str(e)
-            if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
-                print("  [Rate limit] sleeping 35s...")
-                time.sleep(35)
-            elif "503" in msg or "UNAVAILABLE" in msg:
-                print("  [Server busy] sleeping 60s...")
-                time.sleep(60)
+            return response.content[0].text
+        except anthropic.RateLimitError:
+            print("  [Rate limit] sleeping 30s...")
+            time.sleep(30)
+        except anthropic.APIStatusError as e:
+            if e.status_code in (529, 503):
+                print("  [Server busy] sleeping 30s...")
+                time.sleep(30)
             else:
                 raise
 
@@ -129,8 +132,8 @@ def main():
     filtered = args.retrieval == "filtered"
     output_path = f"squad_testing/output/evaluated_squad_{args.strategy}_{args.retrieval}.jsonl"
 
-    if not GEMINI_API_KEY:
-        raise EnvironmentError("GEMINI_API_KEY is not set. Run `source ./.env` from the repo root first.")
+    if not ANTHROPIC_API_KEY:
+        raise EnvironmentError("ANTHROPIC_API_KEY is not set. Add it to .env and run `source ./.env` from the repo root first.")
 
     print(f"Strategy:  {args.strategy}")
     print(f"Retrieval: {args.retrieval}")
@@ -147,7 +150,7 @@ def main():
     print("Loading ChromaDB collection...")
     collection = load_collection(args.strategy)
 
-    client_genai = genai.Client(api_key=GEMINI_API_KEY)
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
     # Resume from previous run
     processed_ids: set[str] = set()
@@ -196,7 +199,7 @@ def main():
                 continue
 
             context = "\n\n---\n\n".join(chunks)
-            generated = generate_answer(client_genai, context, question)
+            generated = generate_answer(client, context, question)
 
             result = {
                 "id": qid,

@@ -1,6 +1,6 @@
 """
 Shared configuration for the RAG system, including API keys, model names, and paths for documents and databases.
-Edit all parameters here to configure the system. Make sure to set the GEMINI_API_KEY in your .env file for generation to work.
+Edit all parameters here to configure the system. Set ANTHROPIC_API_KEY in your .env file for generation to work.
 """
 
 import os
@@ -11,11 +11,14 @@ load_dotenv()
 # Gemini API (used only for generation, not embeddings)
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-# Change this based on your quota
-GENERATION_MODEL = "gemini-2.5-flash"
+# Anthropic API
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+
+# Generation model — set to Claude Haiku for fast, cost-effective bulk evaluation
+GENERATION_MODEL = "claude-haiku-4-5-20251001"
+#GENERATION_MODEL = "gemini-2.5-flash"
 #GENERATION_MODEL = "gemma-4-31b-it"
 #GENERATION_MODEL = "gemma-3-27b-it"
-#GENERATION_MODEL = "gemini-3.1-flash-lite-preview"
 
 # Local embedding model (no API key needed and same as the one used usually for embedding generation in the ChromaDB cloud version)
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"

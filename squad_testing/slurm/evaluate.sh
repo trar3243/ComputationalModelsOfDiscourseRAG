@@ -22,7 +22,10 @@ STRATEGIES=(
 # 1. Changing to project directory
 cd /projects/tejo9855/Projects/ComputationalModelsOfDiscourseRAG
 
-# 2. Loading Modules
+# 2. Loading environment variables
+source .env
+
+# 3. Loading Modules
 module load anaconda
 module load cuda/12.1.1
 
