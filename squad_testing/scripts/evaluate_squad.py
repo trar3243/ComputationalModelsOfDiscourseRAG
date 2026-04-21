@@ -28,6 +28,7 @@ import json
 import re
 import time
 import argparse
+import random
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[2]))  # repo root
@@ -43,7 +44,8 @@ from index_documents import LocalEmbeddingFunction
 
 DEFAULT_STRATEGY = "baseline_258_tok"
 N_RESULTS        = 10   # chunks to retrieve per question
-LIMIT            = 20   # set to an int (e.g. 100) to stop early; None = full validation set
+DEFAULT_LIMIT    = 1000
+SAMPLE_SEED      = 42
 
 
 def slugify(title: str) -> str:
@@ -115,7 +117,14 @@ def main():
         default="filtered",
         help="filtered: retrieve only from the gold article's chunks; global: retrieve from all chunks (default: filtered)",
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_LIMIT,
+        help=f"Number of questions to evaluate (default: {DEFAULT_LIMIT}). Pass 0 for full dataset.",
+    )
     args = parser.parse_args()
+    limit = args.limit if args.limit > 0 else None
 
     filtered = args.retrieval == "filtered"
     output_path = f"squad_testing/output/evaluated_squad_{args.strategy}_{args.retrieval}.jsonl"
@@ -125,10 +134,15 @@ def main():
 
     print(f"Strategy:  {args.strategy}")
     print(f"Retrieval: {args.retrieval}")
+    print(f"Limit:     {limit if limit else 'full dataset'}")
     print(f"Output:    {output_path}")
 
     print("Loading SQuAD validation set...")
-    squad = load_dataset("rajpurkar/squad", split="train")
+    squad = list(load_dataset("rajpurkar/squad", split="train"))
+    random.seed(SAMPLE_SEED)
+    random.shuffle(squad)
+    if limit:
+        squad = squad[:limit]
 
     print("Loading ChromaDB collection...")
     collection = load_collection(args.strategy)
@@ -149,14 +163,11 @@ def main():
                         continue
         print(f"Resuming: {len(processed_ids)} already done.\n")
 
-    total = min(len(squad), LIMIT) if LIMIT else len(squad)
+    total = len(squad)
     counter = 0
 
     with open(output_path, "a", encoding="utf-8") as f:
-        for i, example in enumerate(squad):
-            if LIMIT and i >= LIMIT:
-                break
-
+        for example in squad:
             qid = example["id"]
             if qid in processed_ids:
                 counter += 1

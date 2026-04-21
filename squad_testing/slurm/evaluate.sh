@@ -36,5 +36,6 @@ for STRATEGY in "${STRATEGIES[@]}"; do
     echo "========================================"
     python -u squad_testing/scripts/evaluate_squad.py \
         --strategy $STRATEGY \
-        --retrieval $RETRIEVAL
+        --retrieval $RETRIEVAL \
+        --limit 1000
 done
