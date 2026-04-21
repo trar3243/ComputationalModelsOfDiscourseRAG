@@ -31,6 +31,6 @@ for STRATEGY in "${STRATEGIES[@]}"; do
     echo "========================================"
     echo "Indexing strategy: $STRATEGY"
     echo "========================================"
-    python squad_testing/scripts/index_squad_documents.py \
+    python -u squad_testing/scripts/index_squad_documents.py \
         --chunks-dir squad_testing/chunks/$STRATEGY
 done

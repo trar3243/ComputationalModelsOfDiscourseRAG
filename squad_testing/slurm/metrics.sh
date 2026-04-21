@@ -34,7 +34,7 @@ for STRATEGY in "${STRATEGIES[@]}"; do
     echo "========================================"
     echo "Computing metrics: $STRATEGY | retrieval: $RETRIEVAL"
     echo "========================================"
-    python squad_testing/scripts/compute_squad_metrics.py \
+    python -u squad_testing/scripts/compute_squad_metrics.py \
         --strategy $STRATEGY \
         --retrieval $RETRIEVAL
 done
