@@ -10,7 +10,7 @@
 #SBATCH --time=24:00:00
 
 STRATEGIES=(
-    "baseline_258_tok"
+    # "baseline_258_tok"
     "most_recent_low_acc_258t_w128_wtd"
     "most_recent_258t_w254"
     "nonlinear_258t_w254"
