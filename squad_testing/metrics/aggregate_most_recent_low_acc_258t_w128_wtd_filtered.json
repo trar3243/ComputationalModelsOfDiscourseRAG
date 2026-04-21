@@ -1,0 +1,8 @@
+{
+  "strategy": "most_recent_low_acc_258t_w128_wtd",
+  "retrieval": "filtered",
+  "n_questions": 1000,
+  "n_null_answers": 1000,
+  "mean_exact_match": 0.0,
+  "mean_bert_cls": 0.0
+}

@@ -1,0 +1,8 @@
+{
+  "strategy": "baseline_258_tok",
+  "retrieval": "filtered",
+  "n_questions": 958,
+  "n_null_answers": 59,
+  "mean_exact_match": 0.136743,
+  "mean_bert_cls": 0.730516
+}
