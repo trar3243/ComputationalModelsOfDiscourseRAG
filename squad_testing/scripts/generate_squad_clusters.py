@@ -10,7 +10,7 @@ format as clusters/financial/*.json.
 Usage (from repo root):
     python squad_testing/scripts/generate_squad_clusters.py [--limit N]
 """
-
+import torch
 import json
 import re
 import argparse
