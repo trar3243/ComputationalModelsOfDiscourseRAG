@@ -10,7 +10,7 @@
 #SBATCH --time=24:00:00
 
 # Toggle retrieval mode: "filtered" or "global"
-RETRIEVAL="filtered"
+RETRIEVAL="global"
 
 STRATEGIES=(
     "baseline_258_tok"
