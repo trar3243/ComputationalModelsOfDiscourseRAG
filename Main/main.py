@@ -316,6 +316,95 @@ def LOONG_generate_all_chunks(segmenter):
     processed_count = total_docs - skipped_count
     print(f"Successfully processed {processed_count} files (skipped {skipped_count}) into: {output_dir}")
 
+def SQuAD_generate_all_chunks(segmenter):
+    root_path = Path(CMDDROOT)
+    
+    # Target your specific parquet file
+    parquet_file = root_path / "squad_testing/data/squad_wiki_full_articles.parquet"
+    
+    if not parquet_file.exists():
+        print(f"Error: Could not find dataset at {parquet_file}")
+        return
+
+    print(f"Loading SQuAD parquet file from {parquet_file}...")
+    # Leveraging the already-imported Hugging Face datasets library
+    dataset = load_dataset("parquet", data_files={"train": str(parquet_file)}, split="train")
+    total_docs = len(dataset)
+
+    if total_docs == 0:
+        print("No documents found in the parquet file.")
+        return
+
+    method = "nonlinear"
+    target_size_tokens = 258
+    search_window = 254
+    full_sentence_included = False
+    weighted = False
+
+    folder_name = f"method={method}_target_size_tokens={target_size_tokens}_search_window={search_window}_full_sent={full_sentence_included}_weighted={weighted}"
+    
+    # Store in a dedicated 'squad' directory
+    output_dir = root_path / "chunks" / "squad" / folder_name
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    skipped_count = 0
+
+    for i, row in enumerate(dataset, start=1):
+        percent_complete = (i / total_docs) * 100
+        
+        # Extract title and text. Fallback to generic names/fields if standard SQuAD keys are missing
+        title = row.get('title', f"squad_doc_{i}")
+        text = row.get('text', row.get('context', ''))
+        
+        if not text:
+            print(f"[{percent_complete:.2f}%] Skipping {title}: No text/context found.")
+            skipped_count += 1
+            continue
+
+        # Sanitize title to make it a safe filename (removes spaces, slashes, etc.)
+        safe_title = "".join([c if c.isalnum() else "_" for c in title])
+        json_file_path = output_dir / f"{safe_title}.json"
+
+        # Check for existing file to allow resuming interrupted runs
+        if json_file_path.exists():
+            print(f"[{percent_complete:.2f}%] Skipping {title}: {json_file_path.name} already exists.")
+            skipped_count += 1
+            continue
+
+        print(f"[{percent_complete:.2f}%] Processing {title}...")
+
+        # Run your chunking strategy
+        clusters = segmenter.get_clusters(text)
+        chunks = segmenter.coreference_chunk_text(
+            text=text,
+            clusters=clusters,
+            method=method,
+            target_size_tokens=target_size_tokens,
+            search_window=search_window,
+            full_sentence_inclusion=full_sentence_included,
+            weighted=weighted
+        )
+
+        # JSON construction
+        output_data = {
+            "source_file_name": safe_title,
+            "original_title": title,
+            "chunks": chunks
+        }
+
+        # Write out
+        with open(json_file_path, 'w', encoding='utf-8') as f:
+            json.dump(output_data, f, indent=4, ensure_ascii=False)
+
+        # Memory cleanup
+        del clusters
+        del chunks
+        del text
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    processed_count = total_docs - skipped_count
+    print(f"Successfully processed {processed_count} files (skipped {skipped_count}) into: {output_dir}")
 
 def main(inputArguments):
     initialize(inputArguments)
@@ -324,7 +413,8 @@ def main(inputArguments):
     segmenter = Segmenter(g_ArgParse.get("device"), tokenizer)
     
     # LOONG(segmenter)
-    LOONG_generate_all_chunks(segmenter)
+    # LOONG_generate_all_chunks(segmenter)
+    SQuAD_generate_all_chunks(segmenter)
 
     
 
