@@ -4,7 +4,6 @@ Data/*
 .DS_Store
 .conda
 .env
-clusters/
 chroma_db/
 squad_chroma_db/
 
