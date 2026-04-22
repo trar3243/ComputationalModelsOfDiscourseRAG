@@ -13,9 +13,4 @@ squad_chroma_db_most_recent_258t_w254/
 squad_chroma_db_most_recent_low_acc_258t_w128_wtd/
 squad_chroma_db_nonlinear_258t_w254/
 
-squad_testing/output/evaluated_squad_baseline_258_tok_filtered.jsonl
-squad_testing/output/evaluated_squad_most_recent_258t_w254_filtered.jsonl
-squad_testing/output/evaluated_squad_most_recent_low_acc_258t_w128_wtd_filtered.jsonl
-squad_testing/output/evaluated_squad_nonlinear_258t_w254_filtered.jsonl
-
 squad_testing/slurm/job_logs/
