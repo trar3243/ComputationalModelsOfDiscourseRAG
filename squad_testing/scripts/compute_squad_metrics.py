@@ -1,5 +1,5 @@
 """
-Compute exact match and BERT CLS similarity metrics for a SQuAD evaluation run.
+Compute exact match, BERT CLS similarity, and BERTScore F1 metrics for a SQuAD evaluation run.
 
 Reads:  squad_testing/output/evaluated_squad_<strategy>_<retrieval>.jsonl
 Writes:
@@ -7,8 +7,9 @@ Writes:
   squad_testing/metrics/aggregate_<strategy>_<retrieval>.json     — aggregate summary
 
 Exact match uses standard SQuAD normalization (lowercase, strip punctuation/articles).
-BERT score is cosine similarity of CLS token embeddings from bert-base-uncased,
-taking the max over all gold answers. Null generated answers score 0 for both metrics.
+BERT CLS score is cosine similarity of CLS token embeddings from bert-base-uncased.
+BERTScore F1 uses token-level greedy matching over bert-base-uncased embeddings.
+Both take the max over all gold answers. Null generated answers score 0 for all metrics.
 
 Usage (from repo root):
     python squad_testing/scripts/compute_squad_metrics.py [--strategy <strategy>] [--retrieval {filtered,global}]
@@ -32,6 +33,7 @@ sys.path.append(str(Path(__file__).resolve().parents[2]))  # repo root
 
 import torch
 from transformers import BertTokenizerFast, BertModel
+from bert_score import BERTScorer
 
 DEFAULT_STRATEGY  = "baseline_258_tok"
 BERT_MODEL_NAME   = "bert-base-uncased"
@@ -63,7 +65,7 @@ def _cls_embedding(text: str, tokenizer, model, device) -> torch.Tensor:
     inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=512).to(device)
     with torch.no_grad():
         outputs = model(**inputs)
-    return outputs.last_hidden_state[:, 0, :]  # CLS token
+    return outputs.last_hidden_state[:, 0, :]
 
 
 def bert_cls_score(generated: str | None, gold_answers: list[str], tokenizer, model, device) -> float:
@@ -76,6 +78,18 @@ def bert_cls_score(generated: str | None, gold_answers: list[str], tokenizer, mo
         cos = torch.nn.functional.cosine_similarity(gen_emb, gold_emb).item()
         scores.append(cos)
     return max(scores)
+
+
+# ---------------------------------------------------------------------------
+# BERTScore F1
+# ---------------------------------------------------------------------------
+
+def bert_score_f1(generated: str | None, gold_answers: list[str], scorer: BERTScorer) -> float:
+    if not generated:
+        return 0.0
+    candidates = [generated] * len(gold_answers)
+    _, _, F1 = scorer.score(candidates, gold_answers)
+    return F1.max().item()
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +127,7 @@ def main():
     tokenizer = BertTokenizerFast.from_pretrained(BERT_MODEL_NAME)
     model     = BertModel.from_pretrained(BERT_MODEL_NAME).to(device)
     model.eval()
+    scorer    = BERTScorer(model_type=BERT_MODEL_NAME, lang="en")
 
     print("Computing metrics...\n")
 
@@ -130,8 +145,9 @@ def main():
         generated = ex.get("generated_answer")
         gold      = ex.get("gold_answers", [])
 
-        em    = exact_match(generated, gold)
-        bert  = bert_cls_score(generated, gold, tokenizer, model, device)
+        em       = exact_match(generated, gold)
+        cls_bert = bert_cls_score(generated, gold, tokenizer, model, device)
+        bs_f1    = bert_score_f1(generated, gold, scorer)
 
         per_question.append({
             "id":               ex.get("id"),
@@ -140,7 +156,8 @@ def main():
             "gold_answers":     gold,
             "generated_answer": generated,
             "exact_match":      em,
-            "bert_cls_score":   round(bert, 6),
+            "bert_cls_score":   round(cls_bert, 6),
+            "bert_score_f1":    round(bs_f1, 6),
         })
 
         if (i + 1) % 10 == 0:
@@ -149,15 +166,17 @@ def main():
     n        = len(per_question)
     n_null   = sum(1 for e in per_question if e["generated_answer"] is None)
     mean_em  = sum(e["exact_match"] for e in per_question) / n if n else 0.0
-    mean_bert = sum(e["bert_cls_score"] for e in per_question) / n if n else 0.0
+    mean_cls  = sum(e["bert_cls_score"] for e in per_question) / n if n else 0.0
+    mean_bert = sum(e["bert_score_f1"]  for e in per_question) / n if n else 0.0
 
     aggregate = {
-        "strategy":         args.strategy,
-        "retrieval":        args.retrieval,
-        "n_questions":      n,
-        "n_null_answers":   n_null,
-        "mean_exact_match": round(mean_em, 6),
-        "mean_bert_cls":    round(mean_bert, 6),
+        "strategy":           args.strategy,
+        "retrieval":          args.retrieval,
+        "n_questions":        n,
+        "n_null_answers":     n_null,
+        "mean_exact_match":   round(mean_em, 6),
+        "mean_bert_cls":      round(mean_cls, 6),
+        "mean_bert_score_f1": round(mean_bert, 6),
     }
 
     with open(per_q_path, "w", encoding="utf-8") as f:
@@ -167,9 +186,10 @@ def main():
         json.dump(aggregate, f, indent=2, ensure_ascii=False)
 
     print(f"\nResults:")
-    print(f"  mean exact match : {mean_em:.4f}")
-    print(f"  mean BERT CLS    : {mean_bert:.4f}")
-    print(f"  null answers     : {n_null}/{n}")
+    print(f"  mean exact match    : {mean_em:.4f}")
+    print(f"  mean BERT CLS       : {mean_cls:.4f}")
+    print(f"  mean BERTScore F1   : {mean_bert:.4f}")
+    print(f"  null answers        : {n_null}/{n}")
     print(f"\nWrote: {per_q_path}")
     print(f"Wrote: {aggregate_path}")
 
