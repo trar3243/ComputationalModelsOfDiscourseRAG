@@ -9,6 +9,7 @@ Usage:
 """
 
 import chromadb
+import torch 
 import google.genai as genai
 from sentence_transformers import SentenceTransformer
 
@@ -28,7 +29,7 @@ from index_documents import LocalEmbeddingFunction
 client_genai = genai.Client(api_key=GEMINI_API_KEY)
 
 
-def load_collection() -> chromadb.Collection:
+def load_collection1() -> chromadb.Collection:
     """Load the existing ChromaDB collection."""
     print(f"Loading embedding model '{EMBEDDING_MODEL_NAME}'...")
     embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
@@ -41,7 +42,32 @@ def load_collection() -> chromadb.Collection:
     )
     print(f"Loaded collection '{COLLECTION_NAME}' with {collection.count()} chunks.\n")
     return collection
+def load_collection() -> chromadb.Collection:
+    """Load the existing ChromaDB collection."""
+    print(f"Loading embedding model '{EMBEDDING_MODEL_NAME}' in 4-bit mode...")
+    
+    # Updated model initialization to match index_documents.py
+    embedding_model = SentenceTransformer(
+        EMBEDDING_MODEL_NAME,
+        device="cuda",
+        trust_remote_code=True,
+        model_kwargs = {
+            "torch_dtype": torch.float16,
+            "load_in_4bit": True,
+            "bnb_4bit_compute_dtype": torch.float16,
+            "bnb_4bit_quant_type": "nf4"
+        }
+    )
+    
+    embed_fn = LocalEmbeddingFunction(embedding_model)
 
+    client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
+    collection = client.get_collection(
+        name=COLLECTION_NAME,
+        embedding_function=embed_fn,
+    )
+    print(f"Loaded collection '{COLLECTION_NAME}' with {collection.count()} chunks.\n")
+    return collection
 
 # Step 5: Retrieving relevant chunks from ChromaDB
 

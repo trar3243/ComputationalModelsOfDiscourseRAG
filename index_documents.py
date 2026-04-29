@@ -13,10 +13,12 @@ Usage:
 
 import os
 import glob
+import json
 import chromadb
+import torch 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
-
+from transformers import BitsAndBytesConfig
 
 from config import (
     EMBEDDING_MODEL_NAME,
@@ -32,8 +34,9 @@ from config import (
 
 def load_text_files(directory: str) -> list[dict]:
     documents = []
-    txt_files = glob.glob(os.path.join(directory, "*.txt")) + glob.glob(os.path.join(directory, "*.md"))
-
+    # txt_files = glob.glob(os.path.join(directory, "*.txt")) + glob.glob(os.path.join(directory, "*.md"))
+    txt_files = glob.glob(os.path.join(directory, "**/*.txt"), recursive=True) + glob.glob(os.path.join(directory, "**/*.md"), recursive=True)
+    # txt_files = glob.glob(os.path.join(directory, "/*.txt"), recursive=True) + glob.glob(os.path.join(directory, "/*.md"), recursive=True)
     if not txt_files:
         print(f"No .txt files found in '{directory}'.")
         return documents
@@ -79,6 +82,41 @@ def chunk_documents(documents: list[dict]) -> tuple[list[str], list[str], list[d
     print(f"Total chunks created: {len(all_chunks)}")
     return all_chunks, all_ids, all_metadatas
 
+def return_prechunked_texts(chunk_json_path: str) -> tuple[list[str], list[str], list[dict]]:
+    all_chunks = []
+    all_ids = []
+    all_metadatas = []
+
+    json_files = glob.glob(os.path.join(chunk_json_path, "*.json"))
+    
+    if not json_files:
+        print(f"No .json files found in '{chunk_json_path}'.")
+        return all_chunks, all_ids, all_metadatas
+
+    for filepath in json_files:
+        with open(filepath, "r", encoding="utf-8") as f:
+            try:
+                data = json.load(f)
+            except json.JSONDecodeError:
+                print(f"Error reading JSON from {filepath}. Skipping.")
+                continue
+            
+        # Extract the source filename and the list of chunks
+        source_file = data.get("source_file_name") or data.get("metadata", {}).get("source_file", os.path.basename(filepath))
+        chunks = data.get("chunks", [])
+
+        # Build the lists exactly as the LangChain text_splitter block does
+        for i, chunk in enumerate(chunks):
+            all_chunks.append(chunk)
+            all_ids.append(f"{source_file}_chunk_{i}")
+            all_metadatas.append({
+                "source": source_file,
+                "chunk_index": i,
+            })
+
+    print(f"Total pre-made chunks loaded: {len(all_chunks)} from {len(json_files)} files")
+    return all_chunks, all_ids, all_metadatas
+
 
 # Step 3: Getting local embeddings for the chunks
 
@@ -110,7 +148,7 @@ def index_documents(
     chunks: list[str],
     ids: list[str],
     metadatas: list[dict],
-    batch_size: int = 200,
+    batch_size: int = 16,
 ):
     """
     Skips chunks that are already indexed.
@@ -149,20 +187,41 @@ def main():
     print("Step 1-4: Index Documents into ChromaDB")
     print("=" * 60)
 
-    # Step 1: Load documents
-    print(f"\n[1/4] Loading .txt files from '{DOCUMENTS_DIR}'...")
-    documents = load_text_files(DOCUMENTS_DIR)
-    if not documents:
-        print(f"\nPlease add .txt files to the '{DOCUMENTS_DIR}' directory and try again.")
-        return
+    chunks, ids, metadatas = (None,None,None) 
+    load_prechunked = False 
+    if(load_prechunked == False):
+        # Step 1: Load documents
+        print(f"\n[1/4] Loading .txt files from '{DOCUMENTS_DIR}'...")
+        documents = load_text_files(DOCUMENTS_DIR)
+        if not documents:
+            print(f"\nPlease add .txt files to the '{DOCUMENTS_DIR}' directory and try again.")
+            return
 
-    # Step 2: Chunk documents
-    print("\n[2/4] Chunking documents with LangChain RecursiveCharacterTextSplitter...")
-    chunks, ids, metadatas = chunk_documents(documents)
+        # Step 2: Chunk documents
+        print("\n[2/4] Chunking documents with LangChain RecursiveCharacterTextSplitter...")
+        chunks, ids, metadatas = chunk_documents(documents)
+    else:
+        chunk_dir = "chunks/method=most_recent_target_size_tokens=258_search_window=254_full_sent=False_weighted=False/"
+        print(f"\n[1/4 & 2/4] Loading pre-chunked documents from '{chunk_dir}'...")
+
+        chunks, ids, metadatas = return_prechunked_texts(chunk_dir)
+
+        if not chunks:
+            print("\nNo chunks were loaded. Exiting.")
+            return
 
     # Step 3: Set up ChromaDB
     print(f"\n[3/4] Loading embedding model '{EMBEDDING_MODEL_NAME}'...")
-    embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+    embedding_model = SentenceTransformer(
+            EMBEDDING_MODEL_NAME,
+            device="cuda",
+            trust_remote_code=True,
+            model_kwargs = {
+                "torch_dtype": torch.float16,
+                "load_in_4bit":True,
+                "bnb_4bit_compute_dtype": torch.float16,
+                "bnb_4bit_quant_type":"nf4"
+                })
     collection = create_chroma_db(embedding_model)
 
     # Step 4: Index chunks
