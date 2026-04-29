@@ -80,7 +80,7 @@ class Segmenter:
                 if text_chunk.strip():
                     preds = self.model.predict(texts=[text_chunk], max_tokens_in_batch=512)
                     chunk_clusters = preds[0].get_clusters(as_strings=False)
-                    
+                    print(chunk_clusters) 
                     for cluster in chunk_clusters:
                         shifted_cluster = []
                         for start, end_idx in cluster:
@@ -155,6 +155,7 @@ class Segmenter:
                         stack.extend(list(span_graph[node] - visited))
                 
                 if len(component) > 1:
+                    component.sort(key=lambda span: span[0])
                     final_global_clusters.append(component)
                     
         return final_global_clusters
@@ -183,12 +184,12 @@ class Segmenter:
             t_end = self.__char_to_token__(cluster[i][1], offsets)
             weight = self.__get_accessibility_score__(text[cluster[i][0]:cluster[i][1]]) if self.weighted else 1.0 
             if(not tie_to_first):
-                while(prior_t_start <= t_end):
+                while(prior_t_start < t_end):
                     graph[prior_t_start] = graph[prior_t_start] + weight 
                     prior_t_start = prior_t_start + 1 
             else:
                 k = first_t_start
-                while(k <= t_end):
+                while(k < t_end):
                     graph[k] = graph[k] + weight 
                     k = k + 1 
         return graph 
@@ -267,6 +268,13 @@ class Segmenter:
             flat_graph = self.__most_recent_cluster_graph_addition__(cluster,text,flat_graph,offsets)
 
         matrix = self.transform_matrix_log_space(matrix)
+        
+        aggregator = ""
+        for row in matrix:
+            for cell in row:
+                aggregator = aggregator + str(math.exp(cell)) + ", "
+            aggregator = aggregator + "\n\n"
+        print(aggregator)
 
         ### Chunk construction ###
         max_chunk_size = target_size_tokens + search_window
@@ -286,7 +294,7 @@ class Segmenter:
                 
             max_row_index_for_column = self.get_max_row_index_for_column(matrix, t)
             
-            if(matrix[max_row_index_for_column][t] <= threshold):
+            if(matrix[max_row_index_for_column][t] < threshold):
                 # We haven't found something worthwhile. Default to ordinary.
                 chunk_start = t + 1
                 if chunk_start >= num_tokens:
@@ -331,7 +339,7 @@ class Segmenter:
                 # Added > 0 bounds check to prevent negative index wrap-around
                 while(edge_start > 0 and matrix[max_row_index_for_column][edge_start] >= threshold):
                     edge_start = edge_start - 1
-                    
+                edge_start = edge_start + 1             
                 edge_end = t
                 # < num_tokens - 1 bounds check
                 while(edge_end < num_tokens - 1 and matrix[max_row_index_for_column][edge_end] >= threshold):
@@ -364,7 +372,7 @@ class Segmenter:
 
         if not text.strip(): return list() 
         encoded = self.tokenizer(text,return_offsets_mapping=True, add_special_tokens=False) 
-
+        print("Token list:", self.tokenizer.convert_ids_to_tokens(encoded["input_ids"]))
         # list of integer tuples. Each tuple refers to the start and end character index for each token 
         offsets = encoded['offset_mapping'] 
 
@@ -395,7 +403,7 @@ class Segmenter:
             elif(method == "most_recent_low_accessible"):
                 graph = self.__most_recent_low_accessible_cluster_graph_addition__(cluster, text,graph,offsets)
 
-
+        print(graph)
         ### Chunk construction ### 
         chunks = list()
         chunk_start = 0 
